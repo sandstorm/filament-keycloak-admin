@@ -1,16 +1,16 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin;
+namespace Sandstorm\FilamentKeycloakAdmin;
 
-use Broodfonds\KeycloakFilamentAdmin\Commands\KeycloakFilamentAdminCommand;
-use Broodfonds\KeycloakFilamentAdmin\Keycloak\ConfigKeycloakSettingsProvider;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakAdminEventsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserCredentialsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserEventsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserGroupsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserIdentity;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserSessionsTable;
-use Broodfonds\KeycloakFilamentAdmin\Testing\TestsKeycloakFilamentAdmin;
+use Sandstorm\FilamentKeycloakAdmin\Commands\KeycloakFilamentAdminCommand;
+use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakAdminEventsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserCredentialsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserEventsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserGroupsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserIdentity;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\Testing\TestsKeycloakFilamentAdmin;
 use Filament\Support\Assets\AlpineComponent;
 use Filament\Support\Assets\Asset;
 use Filament\Support\Assets\Css;

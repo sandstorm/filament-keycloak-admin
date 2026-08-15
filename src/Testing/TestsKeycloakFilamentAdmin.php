@@ -1,6 +1,6 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin\Testing;
+namespace Sandstorm\FilamentKeycloakAdmin\Testing;
 
 use Livewire\Features\SupportTesting\Testable;
 

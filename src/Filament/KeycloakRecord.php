@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Filament;
+namespace Sandstorm\FilamentKeycloakAdmin\Filament;
 
 use Illuminate\Database\Eloquent\Model;
 

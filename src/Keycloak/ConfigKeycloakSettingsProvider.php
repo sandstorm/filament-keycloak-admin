@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Keycloak;
+namespace Sandstorm\FilamentKeycloakAdmin\Keycloak;
 
 use RuntimeException;
 use Sandstorm\KeycloakAdminApi\Connection\KeycloakSettings;

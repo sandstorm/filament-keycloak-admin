@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Filament\Pages;
+namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages;
 
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakAdminEventsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserCredentialsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserEventsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserGroupsTable;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserIdentity;
-use Broodfonds\KeycloakFilamentAdmin\Livewire\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakAdminEventsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserCredentialsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserEventsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserGroupsTable;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserIdentity;
+use Sandstorm\FilamentKeycloakAdmin\Livewire\KeycloakUserSessionsTable;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;

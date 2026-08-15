@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Filament\Pages;
+namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages;
 
 use BackedEnum;
 use Filament\Actions\Action;

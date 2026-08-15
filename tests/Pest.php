@@ -1,5 +1,5 @@
 <?php
 
-use Broodfonds\KeycloakFilamentAdmin\Tests\TestCase;
+use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);

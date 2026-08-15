@@ -1,10 +1,10 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin\Tests;
+namespace Sandstorm\FilamentKeycloakAdmin\Tests;
 
 use BladeUI\Heroicons\BladeHeroiconsServiceProvider;
 use BladeUI\Icons\BladeIconsServiceProvider;
-use Broodfonds\KeycloakFilamentAdmin\KeycloakFilamentAdminServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdminServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
 use Filament\Forms\FormsServiceProvider;

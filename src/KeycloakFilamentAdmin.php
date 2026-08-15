@@ -1,5 +1,5 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin;
+namespace Sandstorm\FilamentKeycloakAdmin;
 
 class KeycloakFilamentAdmin {}

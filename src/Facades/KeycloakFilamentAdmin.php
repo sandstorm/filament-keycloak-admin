@@ -1,16 +1,16 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin\Facades;
+namespace Sandstorm\FilamentKeycloakAdmin\Facades;
 
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @see \Broodfonds\KeycloakFilamentAdmin\KeycloakFilamentAdmin
+ * @see \Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdmin
  */
 class KeycloakFilamentAdmin extends Facade
 {
     protected static function getFacadeAccessor(): string
     {
-        return \Broodfonds\KeycloakFilamentAdmin\KeycloakFilamentAdmin::class;
+        return \Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdmin::class;
     }
 }

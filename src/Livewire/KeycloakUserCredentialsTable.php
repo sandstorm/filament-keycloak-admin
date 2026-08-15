@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Livewire;
+namespace Sandstorm\FilamentKeycloakAdmin\Livewire;
 
-use Broodfonds\KeycloakFilamentAdmin\Filament\KeycloakRecord;
+use Sandstorm\FilamentKeycloakAdmin\Filament\KeycloakRecord;
 use Filament\Actions\Action;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;

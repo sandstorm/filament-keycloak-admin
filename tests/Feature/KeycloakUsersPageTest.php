@@ -1,8 +1,8 @@
 <?php
 
-use Broodfonds\KeycloakFilamentAdmin\Filament\Pages\KeycloakUsers;
-use Broodfonds\KeycloakFilamentAdmin\Filament\Pages\ViewKeycloakUser;
-use Broodfonds\KeycloakFilamentAdmin\KeycloakFilamentAdminPlugin;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\ViewKeycloakUser;
+use Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdminPlugin;
 use Filament\Panel;
 
 it('registers the Keycloak Users list and detail pages on the panel', function () {

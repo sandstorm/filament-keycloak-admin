@@ -55,7 +55,7 @@ return [
 ## Usage
 
 ```php
-$keycloakFilamentAdmin = new Broodfonds\KeycloakFilamentAdmin();
+$keycloakFilamentAdmin = new Sandstorm\FilamentKeycloakAdmin();
 echo $keycloakFilamentAdmin->echoPhrase('Hello, Broodfonds!');
 ```
 

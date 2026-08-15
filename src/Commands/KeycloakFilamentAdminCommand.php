@@ -1,6 +1,6 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin\Commands;
+namespace Sandstorm\FilamentKeycloakAdmin\Commands;
 
 use Illuminate\Console\Command;
 

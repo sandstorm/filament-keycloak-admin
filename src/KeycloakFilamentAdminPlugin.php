@@ -1,9 +1,9 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin;
+namespace Sandstorm\FilamentKeycloakAdmin;
 
-use Broodfonds\KeycloakFilamentAdmin\Filament\Pages\KeycloakUsers;
-use Broodfonds\KeycloakFilamentAdmin\Filament\Pages\ViewKeycloakUser;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\ViewKeycloakUser;
 use Filament\Contracts\Plugin;
 use Filament\Panel;
 

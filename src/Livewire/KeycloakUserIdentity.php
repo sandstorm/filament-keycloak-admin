@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Broodfonds\KeycloakFilamentAdmin\Livewire;
+namespace Sandstorm\FilamentKeycloakAdmin\Livewire;
 
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;

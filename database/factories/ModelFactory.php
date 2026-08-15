@@ -1,6 +1,6 @@
 <?php
 
-namespace Broodfonds\KeycloakFilamentAdmin\Database\Factories;
+namespace Sandstorm\FilamentKeycloakAdmin\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 
