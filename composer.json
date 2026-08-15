@@ -1,19 +1,13 @@
 {
-    "name": "broodfonds/keycloak-filament-admin",
-    "description": "Keycloak Filament Admin UI",
+    "name": "sandstorm/filament-keycloak-admin",
+    "description": "Filament Admin UI for Keycloak",
     "keywords": [
-        "Broodfonds",
         "laravel",
         "filamentphp",
         "filament",
         "filament-plugin",
         "keycloak-filament-admin"
     ],
-    "homepage": "https://github.com/broodfonds/keycloak-filament-admin",
-    "support": {
-        "issues": "https://github.com/broodfonds/keycloak-filament-admin/issues",
-        "source": "https://github.com/broodfonds/keycloak-filament-admin"
-    },
     "license": "MIT",
     "authors": [
         {
@@ -26,7 +20,8 @@
         "php": "^8.2",
         "filament/filament": "^4.0",
         "guzzlehttp/guzzle": "^7.0",
-        "spatie/laravel-package-tools": "^1.15.0"
+        "spatie/laravel-package-tools": "^1.15.0",
+        "sandstorm/keycloak-admin-api": "*"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",
