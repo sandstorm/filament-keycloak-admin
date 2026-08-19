@@ -72,6 +72,23 @@
             "credentials": [
                 {"type": "password", "value": "changeit", "temporary": false}
             ]
+        },
+        {
+            "username": "mfa-user",
+            "enabled": true,
+            "email": "mfa-user@example.test",
+            "emailVerified": true,
+            "firstName": "Mfa",
+            "lastName": "User",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false},
+                {
+                    "type": "otp",
+                    "userLabel": "Authenticator app",
+                    "secretData": "{\"value\":\"JBSWY3DPEHPK3PXP\"}",
+                    "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+                }
+            ]
         }
     ],
     "groups": [

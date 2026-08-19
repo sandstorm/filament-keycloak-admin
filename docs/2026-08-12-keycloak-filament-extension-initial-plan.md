@@ -303,8 +303,9 @@ plugin must boot Laravel. **No Pest.**
 
 - `tests/TestCase.php` — Testbench `Orchestra` + `WithWorkbench`, registers the Filament + plugin providers.
 - **Unit / feature suite** (default, hermetic): pages register on a panel; the detail route is `/keycloak-users/{userId}`;
-  `records()` maps page→`first`/`max`; `KeycloakRecord` narrows DTOs; write actions call the right API method (against a
-  fake/bound test double). Livewire assertions via `Livewire::test(...)`.
+  nav label. Structure/wiring only — **no fakes or bound test doubles**. Write actions are deliberately **not** unit-tested
+  against a mock: a mock only re-asserts the call we wrote, so it proves nothing about Keycloak. Their real coverage is the
+  E2E suite (§11.1), which exercises the whole path against a live Keycloak and verifies the effect server-side.
 - `phpunit.xml.dist` two testsuites: `unit` (`tests/`, excluding Integration) and `integration` (`tests/Integration`,
   `@group integration`).
 
@@ -317,9 +318,14 @@ Mirrors the client lib's Integration suite, driving the Filament/Livewire layer:
 - `tests/Integration/IntegrationTestCase.php` extends the Testbench `TestCase`, sets
   `config('filament-keycloak-admin.*')` from `KEYCLOAK_E2E_*` env (`auth_mode=service_account`), and **skips** unless
   `KEYCLOAK_E2E_BASE_URL` is set. Real ServiceProvider wiring is exercised — no fakes.
-- Cases (`#[Group('integration')]`, `Livewire::test`): list renders/searches `jane`; Identity shows jane; Groups shows
-  `/staff`; sessions/credentials/events render (log in first via `e2e-login` so a real session + LOGIN event exist); a
-  denied path propagates `UnexpectedKeycloakResponseException` (no swallow — §8).
+- Read cases (`#[Group('integration')]`, `Livewire::test`): list renders/searches `jane`; Identity shows jane; Groups
+  shows `/staff`; sessions/credentials/events render (log in first via `e2e-login` so a real session + LOGIN event
+  exist); a denied path propagates `UnexpectedKeycloakResponseException` (no swallow — §8).
+- Write cases (`KeycloakUserWriteActionsE2ETest`): every UI mutation driven through the real Filament action lifecycle
+  (mount → fill → confirm → call) then verified server-side via the bound API — `triggerPasswordReset`
+  (`executeActionsEmail` accepted, MailPit SMTP), `logoutAll` (session gone after log-in), `addGroups`/`removeGroup`
+  (membership toggled, net-zero against the seed), `removeCredential` (OTP deleted). The seeded second factor lives on a
+  dedicated `mfa-user` so jane is never disturbed. The pure-API counterparts are the client lib's Integration suite.
 - Plugin-local `mise.toml`: `install`, `test` (`phpunit --testsuite unit`), `analyse`, `e2e:up`, `e2e:down`,
   `test:integration` (env `KEYCLOAK_E2E_BASE_URL=http://localhost:9911`), `e2e` (up → integration → down).
 
