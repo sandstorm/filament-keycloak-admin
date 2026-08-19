@@ -1,0 +1,88 @@
+name: CI
+
+# All tasks are driven through mise (see mise.toml) so CI and local dev run the
+# exact same commands. PHP is provisioned by setup-php (mise's php plugin would
+# compile from source and be slow); mise then just runs composer / the vendored
+# binaries against that PHP.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit tests & static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.json') }}
+          restore-keys: composer-
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: mise run install
+
+      - name: Check code style
+        run: mise run lint
+
+      - name: Static analysis
+        run: mise run analyse
+
+      - name: Unit tests
+        run: mise run test
+
+  e2e:
+    name: End-to-end (real Keycloak)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.json') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: mise run install
+
+      - name: Boot Keycloak
+        run: mise run e2e:up
+
+      - name: Integration tests
+        run: mise run test:integration
+
+      - name: Tear down Keycloak
+        if: always()
+        run: mise run e2e:down
