@@ -5,7 +5,24 @@ and the client-lib concept (`keycloak-admin-api/docs/standalone-keycloak-api-pac
 
 Adds **write** capability to the today-read-only user detail page, and **impersonation**. every write must honour the
 **individual admin's** Keycloak permissions (FGAP), which forces the **`sso` act-as-user** auth mode — sketched in both
-prior docs, **but not built yet**.
+prior docs.
+
+---
+
+## Status / where to resume (updated 2026-08-19)
+
+- ✅ **Slice 1** — `sso` act-as-user wired: `FilamentSsoTokenProvider` + `AdminKeycloakSession` seam
+  (heloufir adapter in prod, in-memory fake in tests). Proven E2E over both realms.
+- ✅ **Slice 2** — lib `KeycloakUsersApi::update()`: lossless read-modify-write via `KeycloakUser` `with*()`
+  mutators + `toRepresentation()`. Unit 47/47 + PHPStan L6 clean. FGAP group policy (`staff can view all` +
+  `staff can manage endusers` on the specific `/endusers` group) **baked** into `realm-import-fgap.json` and
+  proven by a real-write E2E (sarah edits emma ✔ / denied jane 403). **All E2E green.**
+- **← NEXT: Slice 3** — plugin editable Identity + activate/deactivate. First add `KeycloakUser.access`
+  (caller-relative capability map) so the UI gates edit controls up front; then the Filament form → `update()`.
+  See §8 for the full remaining sequence (User-Profile attributes, then impersonation).
+
+Test entry points: lib `mise run test` / `mise run analyse`; plugin `mise run test`; full E2E `mise run e2e`
+(only e2e boots Keycloak). Keycloak console `admin`/`admin` @ `:9911`; seeded users password `changeit`.
 
 ---
 
@@ -107,33 +124,36 @@ that KC computes **for the calling identity**. Under `sso` it is *this admin's* 
 
 Fills the "user-write DTOs" gap tracked in the standalone concept §8. Feature-first: new DTOs sit beside their API.
 
-### 3.1 `KeycloakUsersApi::update()`
+### 3.1 `KeycloakUsersApi::update()` — ✅ BUILT
 
 ```php
-public function update(KeycloakUserId $id, UpdateKeycloakUserCommand $changes): void;  // PUT /users/{id}
+public function update(KeycloakUser $user): void;  // PUT /users/{id}
 ```
 
-Covers features 1–4. New DTO `Features/KeycloakUsersApi/Dto/UpdateKeycloakUserCommand.php` — a `final readonly`
-command holding **only the mutable fields** as nullable "leave-unchanged unless set" values:
-`enabled`, `firstName`, `lastName`, `emailVerified`, `attributes`. Named constructors keep call sites honest
-(`::enable()`, `::disable()`, `::withNames(...)`, `::withEmailVerified(bool)`, `::withAttributes(...)`).
+Covers features 1–4. **Shipped without** a separate `UpdateKeycloakUserCommand`/`applying()` — the existing
+codebase has no command objects, so edits live on the DTO as immutable `with*()` mutators (simpler, matches
+house style):
 
-**Read-modify-write, expressed through the existing `KeycloakUser` DTO (decided).** Keycloak's
-`PUT /users/{id}` replaces the representation — a partial body **wipes** omitted fields (attributes
-especially). So the merge round-trips through the typed DTO, not raw-array poking:
+- `KeycloakUser::withFirstName(?string)`, `withLastName(?string)`, `withEmail(?string)`, `withEnabled(bool)`,
+  `withEmailVerified(bool)`, `withAttributes(array)`, `withAttribute(string, list<string>)` — each returns a
+  **new** DTO, original untouched.
 
-1. `getById` → `KeycloakUser` (as today).
-2. `KeycloakUser::applying(UpdateKeycloakUserCommand): KeycloakUser` — returns a **new** DTO with the
-   command's set fields overridden (immutable; unset command fields leave the DTO field untouched).
-3. `KeycloakUser::toRepresentation(): array` → the PUT body; impl calls `transport->putJson`.
+**Read-modify-write (decided, done).** `PUT /users/{id}` replaces the representation — a partial body wipes
+omitted fields. So:
 
-**Losslessness is mandatory and is the real logic worth testing.** The modelled DTO is a *subset* of
-Keycloak's `UserRepresentation`; a naive `toRepresentation()` built only from modelled fields would drop
-everything unmodelled (`createdTimestamp` is read-only, but future/unknown fields would silently vanish). So
-`fromRawResponse()` **retains the original raw representation**, and `toRepresentation()` overlays only the
-modelled fields onto that retained raw — modelled fields authoritative, everything else passed through
-verbatim. Unit tests assert: (a) unknown/unmodelled fields survive the round-trip, (b) each command field
-maps correctly, (c) an all-null command is a no-op body.
+1. `getById` → `KeycloakUser` (retains the untouched source in a private `$raw`).
+2. `->with*()` → a new DTO with edits applied.
+3. `KeycloakUser::toRepresentation(): array` overlays **only** modelled fields onto `$raw` → PUT body; impl
+   calls `transport->putJson`. Nullable identity fields are only written when non-null or already present in
+   the source (no spurious `null`, no accidental clear).
+
+**Losslessness is proven by unit tests** (lib `KeycloakUserTest`): unmodelled fields (`createdTimestamp`,
+`access`, `disableableCredentialTypes`, …) survive the round-trip; edits overlay correctly; a brief source
+gains no `null` identity keys. Plus `KeycloakUsersApiTest`: `update()` PUTs to `/users/{id}` preserving
+unmodelled fields, and a 403 surfaces as `UnexpectedKeycloakResponseException` (the FGAP-deny path).
+
+> **Not yet built:** `KeycloakUser.access` (the caller-relative capability map from §2.1) is **not** surfaced
+> on the DTO yet — deferred to slice 3, where the UI gates edit controls off it.
 
 ### 3.2 Reset password — email-link only (decided)
 
@@ -153,8 +173,8 @@ the §7.1 target-app decision.**
 
 ### 3.4 Tests
 
-Unit: `UpdateKeycloakUserCommand` / `KeycloakUser::applying()` merge + `toRepresentation()` losslessness (the
-real logic). E2E: see the two-realm matrix in §3a.
+Unit (done): `KeycloakUser` `with*()` edits + `toRepresentation()` losslessness (the real logic), and
+`update()` PUT shape + 403 surfacing. E2E: see the two-realm matrix in §3a.
 
 ---
 
@@ -318,13 +338,17 @@ faked in tests** (§2.1); impersonation lib call → **dropped** (§3.3/§6).
 
 ## 8. Sequencing — every slice TDD (E2E-focused, against real KC in the API layer)
 
-1. **`FilamentSsoTokenProvider` + `AdminKeycloakSession` seam** (§2/§2.1) — unit: JWT-validity + refresh +
-   throw-loud (fake seam, **no heloufir**); E2E: seam seeded with a real `e2e-login` user token drives a live
-   read as that identity. *Foundation.* ← **current slice.**
-2. **Lib: `KeycloakUser.access` + `.applying()` + `.toRepresentation()` + `UsersApi::update`** (§3.1) — unit:
-   lossless round-trip + command merge; E2E: enable/disable, rename, emailVerified, **unmodelled fields
-   survive**.
-3. **Plugin: editable Identity + activate/deactivate**, capability-gated off `user.access` (§4/§2.1).
+1. ✅ **DONE — `FilamentSsoTokenProvider` + `AdminKeycloakSession` seam** (§2/§2.1) — unit: JWT-validity +
+   refresh + throw-loud (fake seam, **no heloufir**); E2E: `SsoActAsUserE2ETest` drives a live read as a real
+   `e2e-login` user token, over **both** realms (privileged accepted / unprivileged 403).
+2. ✅ **DONE — Lib: `KeycloakUser` `with*()` + `.toRepresentation()` + `UsersApi::update`** (§3.1) — unit:
+   lossless round-trip + edit overlay + 403 surfacing (47/47, PHPStan L6). E2E: `SsoActAsUserE2ETest::a_staff_member_may_edit_an_enduser_but_not_another_staff_member`
+   proves the FGAP group policy through a real write (sarah edits emma ✔, denied jane 403). Note:
+   `KeycloakUser.access` capability map **deferred to slice 3**.
+3. **← NEXT — Plugin: editable Identity + activate/deactivate** (§4). Needs the capability map first: add
+   `KeycloakUser.access` (parse the caller-relative `access` object from `GET /users/{id}`) so the UI can gate
+   edit controls (show-what-I-can-edit, §2.1) instead of only reacting to a 403. Then the Filament form
+   (firstName/lastName/email/enabled/emailVerified) calling `update()`.
 4. **Lib: `KeycloakRealmApi::getUserProfile`** (§5) — E2E parse of real profile config.
 5. **Plugin: attribute fields rendered from User Profile** (§5).
 6. **Impersonation** (§6) — blocked on §7.1; last.
