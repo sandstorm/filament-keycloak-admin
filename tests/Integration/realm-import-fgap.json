@@ -1,0 +1,269 @@
+{
+    "realm": "test-realm-fgap",
+    "enabled": true,
+    "adminPermissionsEnabled": true,
+    "eventsEnabled": true,
+    "eventsListeners": ["jboss-logging"],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": true,
+    "editUsernameAllowed": false,
+    "clients": [
+        {
+            "clientId": "e2e-login",
+            "enabled": true,
+            "publicClient": true,
+            "standardFlowEnabled": false,
+            "directAccessGrantsEnabled": true,
+            "protocol": "openid-connect"
+        },
+        {
+            "clientId": "admin-permissions",
+            "name": "${admin-permissions}",
+            "enabled": true,
+            "protocol": "openid-connect",
+            "bearerOnly": false,
+            "publicClient": false,
+            "standardFlowEnabled": false,
+            "implicitFlowEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "serviceAccountsEnabled": true,
+            "authorizationServicesEnabled": true,
+            "fullScopeAllowed": true,
+            "authorizationSettings": {
+                "allowRemoteResourceManagement": true,
+                "policyEnforcementMode": "ENFORCING",
+                "decisionStrategy": "UNANIMOUS",
+                "resources": [
+                    {
+                        "name": "Roles",
+                        "type": "Roles",
+                        "ownerManagedAccess": false,
+                        "attributes": {},
+                        "uris": [],
+                        "scopes": [
+                            {"name": "map-role-composite"},
+                            {"name": "map-role-client-scope"},
+                            {"name": "map-role"}
+                        ]
+                    },
+                    {
+                        "name": "Groups",
+                        "type": "Groups",
+                        "ownerManagedAccess": false,
+                        "attributes": {},
+                        "uris": [],
+                        "scopes": [
+                            {"name": "manage-members"},
+                            {"name": "view"},
+                            {"name": "manage-membership"},
+                            {"name": "view-members"},
+                            {"name": "manage"},
+                            {"name": "impersonate-members"}
+                        ]
+                    },
+                    {
+                        "name": "Users",
+                        "type": "Users",
+                        "ownerManagedAccess": false,
+                        "attributes": {},
+                        "uris": [],
+                        "scopes": [
+                            {"name": "manage-group-membership"},
+                            {"name": "view"},
+                            {"name": "impersonate"},
+                            {"name": "map-roles"},
+                            {"name": "reset-password"},
+                            {"name": "manage"}
+                        ]
+                    },
+                    {
+                        "name": "Clients",
+                        "type": "Clients",
+                        "ownerManagedAccess": false,
+                        "attributes": {},
+                        "uris": [],
+                        "scopes": [
+                            {"name": "view"},
+                            {"name": "map-roles-client-scope"},
+                            {"name": "map-roles"},
+                            {"name": "manage"},
+                            {"name": "map-roles-composite"}
+                        ]
+                    },
+                    {
+                        "name": "4b22752d-0719-48a2-942d-5f9057c57d81",
+                        "ownerManagedAccess": false,
+                        "attributes": {},
+                        "uris": [],
+                        "scopes": [
+                            {"name": "manage-members"},
+                            {"name": "view"},
+                            {"name": "manage-membership"},
+                            {"name": "view-members"},
+                            {"name": "manage"},
+                            {"name": "impersonate-members"}
+                        ]
+                    }
+                ],
+                "policies": [
+                    {
+                        "name": "match-staff",
+                        "description": "",
+                        "type": "group",
+                        "logic": "POSITIVE",
+                        "decisionStrategy": "UNANIMOUS",
+                        "config": {
+                            "groups": "[{\"path\":\"/staff\",\"extendChildren\":false}]",
+                            "groupsClaim": ""
+                        }
+                    },
+                    {
+                        "name": "staff can manage endusers",
+                        "description": "",
+                        "type": "scope",
+                        "logic": "POSITIVE",
+                        "decisionStrategy": "UNANIMOUS",
+                        "config": {
+                            "defaultResourceType": "Groups",
+                            "resources": "[\"4b22752d-0719-48a2-942d-5f9057c57d81\"]",
+                            "scopes": "[\"manage-members\"]",
+                            "applyPolicies": "[\"match-staff\"]"
+                        }
+                    },
+                    {
+                        "name": "staff can view all",
+                        "description": "",
+                        "type": "scope",
+                        "logic": "POSITIVE",
+                        "decisionStrategy": "UNANIMOUS",
+                        "config": {
+                            "defaultResourceType": "Users",
+                            "resources": "[\"Users\"]",
+                            "scopes": "[\"view\"]",
+                            "applyPolicies": "[\"match-staff\"]"
+                        }
+                    }
+                ],
+                "scopes": [
+                    {"name": "manage-group-membership"},
+                    {"name": "map-roles-client-scope"},
+                    {"name": "map-role"},
+                    {"name": "view-members"},
+                    {"name": "reset-password"},
+                    {"name": "manage"},
+                    {"name": "impersonate-members"},
+                    {"name": "manage-members"},
+                    {"name": "view"},
+                    {"name": "manage-membership"},
+                    {"name": "impersonate"},
+                    {"name": "map-role-composite"},
+                    {"name": "map-roles"},
+                    {"name": "map-role-client-scope"},
+                    {"name": "map-roles-composite"}
+                ],
+                "authorizationSchema": {
+                    "resourceTypes": {
+                        "Roles": {
+                            "type": "Roles",
+                            "scopes": ["map-role", "map-role-composite", "map-role-client-scope"],
+                            "scopeAliases": {}
+                        },
+                        "Groups": {
+                            "type": "Groups",
+                            "scopes": ["impersonate-members", "view-members", "manage-members", "manage-membership", "view", "manage"],
+                            "scopeAliases": {}
+                        },
+                        "Users": {
+                            "type": "Users",
+                            "scopes": ["map-roles", "impersonate", "view", "reset-password", "manage-group-membership", "manage"],
+                            "scopeAliases": {
+                                "view": ["view-members"],
+                                "impersonate": ["impersonate-members"],
+                                "manage": ["manage-members"]
+                            },
+                            "groupType": "Groups"
+                        },
+                        "Clients": {
+                            "type": "Clients",
+                            "scopes": ["map-roles-composite", "view", "map-roles-client-scope", "map-roles", "manage"],
+                            "scopeAliases": {}
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "users": [
+        {
+            "username": "admin-user",
+            "enabled": true,
+            "email": "admin-user@example.test",
+            "emailVerified": true,
+            "firstName": "Admin",
+            "lastName": "User",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "clientRoles": {
+                "realm-management": [
+                    "view-users",
+                    "query-users",
+                    "query-groups",
+                    "manage-users",
+                    "view-events"
+                ]
+            }
+        },
+        {
+            "username": "login-user",
+            "enabled": true,
+            "email": "login-user@example.test",
+            "emailVerified": true,
+            "firstName": "Login",
+            "lastName": "User",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ]
+        },
+        {
+            "username": "sarah",
+            "enabled": true,
+            "email": "sarah@example.test",
+            "emailVerified": true,
+            "firstName": "Sarah",
+            "lastName": "Staff",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "groups": ["/staff"]
+        },
+        {
+            "username": "jane",
+            "enabled": true,
+            "email": "jane@example.test",
+            "emailVerified": true,
+            "firstName": "Jane",
+            "lastName": "Doe",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "groups": ["/staff"]
+        },
+        {
+            "username": "emma",
+            "enabled": true,
+            "email": "emma@example.test",
+            "emailVerified": true,
+            "firstName": "Emma",
+            "lastName": "Enduser",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "groups": ["/endusers"]
+        }
+    ],
+    "groups": [
+        {"name": "staff"},
+        {"id": "4b22752d-0719-48a2-942d-5f9057c57d81", "name": "endusers"}
+    ]
+}
