@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Sandstorm\FilamentKeycloakAdmin\Tests;
 
 use BladeUI\Heroicons\BladeHeroiconsServiceProvider;
 use BladeUI\Icons\BladeIconsServiceProvider;
-use Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdminServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
 use Filament\Forms\FormsServiceProvider;
@@ -14,30 +16,26 @@ use Filament\Schemas\SchemasServiceProvider;
 use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
 use Filament\Widgets\WidgetsServiceProvider;
-use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
 
-class TestCase extends Orchestra
+/**
+ * Boots Laravel via Testbench with the Filament stack and this plugin's provider registered — a
+ * Filament plugin needs a booted app to register pages and resolve the shared Keycloak adapter. There
+ * is no database: Keycloak is the source of truth, so no migrations or factories are involved.
+ */
+abstract class TestCase extends Orchestra
 {
-    use LazilyRefreshDatabase;
     use WithWorkbench;
 
-    protected function setUp(): void
+    /**
+     * @return list<class-string>
+     */
+    protected function getPackageProviders($app): array
     {
-        parent::setUp();
-
-        Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'Broodfonds\\KeycloakFilamentAdmin\\Database\\Factories\\' . class_basename($modelName) . 'Factory'
-        );
-    }
-
-    protected function getPackageProviders($app)
-    {
-        $providers = [
+        return [
             ActionsServiceProvider::class,
             BladeCaptureDirectiveServiceProvider::class,
             BladeHeroiconsServiceProvider::class,
@@ -51,21 +49,7 @@ class TestCase extends Orchestra
             SupportServiceProvider::class,
             TablesServiceProvider::class,
             WidgetsServiceProvider::class,
-            KeycloakFilamentAdminServiceProvider::class,
+            FilamentKeycloakAdminServiceProvider::class,
         ];
-
-        sort($providers);
-
-        return $providers;
-    }
-
-    public function getEnvironmentSetUp($app): void
-    {
-        $app['config']->set('database.default', 'testing');
-    }
-
-    protected function defineDatabaseMigrations(): void
-    {
-        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
     }
 }

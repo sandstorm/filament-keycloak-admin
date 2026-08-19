@@ -1,0 +1,81 @@
+{
+    "realm": "test-realm",
+    "enabled": true,
+    "eventsEnabled": true,
+    "eventsListeners": ["jboss-logging"],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": true,
+    "editUsernameAllowed": false,
+    "smtpServer": {
+        "host": "mailpit",
+        "port": "1025",
+        "from": "noreply@test-realm.test",
+        "fromDisplayName": "Test Realm",
+        "ssl": "false",
+        "starttls": "false",
+        "auth": "false"
+    },
+    "clients": [
+        {
+            "clientId": "admin-api",
+            "enabled": true,
+            "publicClient": false,
+            "serviceAccountsEnabled": true,
+            "standardFlowEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "secret": "e2e-secret",
+            "protocol": "openid-connect"
+        },
+        {
+            "clientId": "e2e-login",
+            "enabled": true,
+            "publicClient": true,
+            "standardFlowEnabled": false,
+            "directAccessGrantsEnabled": true,
+            "protocol": "openid-connect"
+        }
+    ],
+    "users": [
+        {
+            "username": "service-account-admin-api",
+            "enabled": true,
+            "serviceAccountClientId": "admin-api",
+            "clientRoles": {
+                "realm-management": [
+                    "view-users",
+                    "query-users",
+                    "query-groups",
+                    "manage-users",
+                    "view-events"
+                ]
+            }
+        },
+        {
+            "username": "jane",
+            "enabled": true,
+            "email": "jane@example.test",
+            "emailVerified": true,
+            "firstName": "Jane",
+            "lastName": "Doe",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "groups": ["/staff"]
+        },
+        {
+            "username": "login-user",
+            "enabled": true,
+            "email": "login-user@example.test",
+            "emailVerified": true,
+            "firstName": "Login",
+            "lastName": "User",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ]
+        }
+    ],
+    "groups": [
+        {"name": "staff"},
+        {"name": "admins"}
+    ]
+}

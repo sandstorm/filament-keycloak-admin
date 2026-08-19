@@ -1,13 +1,14 @@
 {
     "name": "sandstorm/filament-keycloak-admin",
-    "description": "Filament Admin UI for Keycloak",
+    "description": "Filament v4 admin UI for managing Keycloak users through the Keycloak Admin REST API",
     "keywords": [
         "laravel",
         "filamentphp",
         "filament",
         "filament-plugin",
-        "keycloak-filament-admin"
+        "keycloak"
     ],
+    "homepage": "https://github.com/sandstorm/filament-keycloak-admin",
     "license": "MIT",
     "authors": [
         {
@@ -17,7 +18,7 @@
         }
     ],
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "filament/filament": "^4.0",
         "guzzlehttp/guzzle": "^7.0",
         "spatie/laravel-package-tools": "^1.15.0",
@@ -28,48 +29,37 @@
         "laravel/pint": "^1.0",
         "nunomaduro/collision": "^8.0",
         "orchestra/testbench": "^9.0|^10.0|^11.0",
-        "pestphp/pest": "^3.7|^4.0",
-        "pestphp/pest-plugin-arch": "^3.0|^4.0",
-        "pestphp/pest-plugin-laravel": "^3.0|^4.0",
-        "pestphp/pest-plugin-livewire": "^3.0|^4.0",
-        "rector/rector": "^2.0"
+        "phpunit/phpunit": "^11.0|^12.0"
     },
     "autoload": {
         "psr-4": {
-            "Broodfonds\\KeycloakFilamentAdmin\\": "src/",
-            "Broodfonds\\KeycloakFilamentAdmin\\Database\\Factories\\": "database/factories/"
+            "Sandstorm\\FilamentKeycloakAdmin\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Broodfonds\\KeycloakFilamentAdmin\\Tests\\": "tests/",
-            "Sandstorm\\KeycloakAdminApi\\": "../keycloak-admin-api/src"
+            "Sandstorm\\FilamentKeycloakAdmin\\Tests\\": "tests/"
         }
     },
     "scripts": {
         "post-autoload-dump": "@php ./vendor/bin/testbench package:discover --ansi",
         "analyse": "phpstan analyse",
         "lint": "pint",
-        "refactor": "rector",
-        "test": "pest",
-        "test:lint": "pint --test",
-        "test:refactor": "rector --dry-run"
+        "test": "phpunit --testsuite unit",
+        "test:integration": "phpunit --testsuite integration",
+        "test:lint": "pint --test"
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Broodfonds\\KeycloakFilamentAdmin\\KeycloakFilamentAdminServiceProvider"
-            ],
-            "aliases": {
-                "KeycloakFilamentAdmin": "Broodfonds\\KeycloakFilamentAdmin\\Facades\\KeycloakFilamentAdmin"
-            }
+                "Sandstorm\\FilamentKeycloakAdmin\\FilamentKeycloakAdminServiceProvider"
+            ]
         }
     },
     "config": {
         "sort-packages": true,
         "allow-plugins": {
             "composer/package-versions-deprecated": true,
-            "pestphp/pest-plugin": true,
             "phpstan/extension-installer": true
         }
     },

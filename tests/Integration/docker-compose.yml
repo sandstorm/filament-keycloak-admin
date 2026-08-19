@@ -1,0 +1,37 @@
+# Throwaway Keycloak for the end-to-end (Integration) test suite. It boots the exact target version
+# and imports a self-contained realm (realm-import.json) that pre-provisions the service-account
+# client, its realm-management roles, a public direct-grant login client, and seed data — so the E2E
+# tests prove the real wire contract without touching any shared/staging Keycloak.
+#
+#   docker compose -f tests/Integration/docker-compose.yml up -d --wait
+#   KEYCLOAK_E2E_BASE_URL=http://localhost:9911 vendor/bin/phpunit --testsuite integration
+#   docker compose -f tests/Integration/docker-compose.yml down -v
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      # host 9911 → Keycloak's in-container HTTP port 8080
+      - "9911:8080"
+    depends_on:
+      - mailpit
+    volumes:
+      - ./realm-import.json:/opt/keycloak/data/import/realm-import.json:ro
+    healthcheck:
+      # /health/ready is served on the management port (9000) in Keycloak 26.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # SMTP sink so `execute-actions-email` (Send password-reset email) has a real mail server to hand
+  # off to (the realm's smtpServer points here). Nothing is asserted against the mailbox — the test
+  # only proves Keycloak accepts the request; MailPit just prevents a "no SMTP configured" 500.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"

@@ -11,6 +11,33 @@ This document is the current-state plan. It is kept consistent with the code.
 
 ---
 
+## 0. Implementation status (2026-08-15)
+
+The plugin was refactored to match this plan. **Done:**
+
+- **Namespace/identifier** — `Sandstorm\FilamentKeycloakAdmin`, config/view/plugin id `filament-keycloak-admin`. PHP ^8.3.
+- **Layout (§3)** — `Filament/Helpers/KeycloakRecord`, `Filament/Pages/KeycloakUsers` + `InspectKeycloakUser`, child
+  components colocated under `Filament/Pages/InspectKeycloakUser/`. Spatie skeleton (Commands, Facade, migrations, stubs,
+  JS build) removed — pure server-rendered UI, no assets.
+- **List page (§7.1)** — records cross as `KeycloakRecord`; whole-row `recordUrl`; no `viewAction`.
+- **Detail page (§7.2)** — tab orchestrator; Overview stacks Identity + Groups + Credentials; sessions/events/admin lazy;
+  cross-tab refresh via `keycloak-user-changed` + `#[On]` → `resetTable()`.
+- **Failure model (§8)** — every failure (incl. 401/403) propagates. The `@keycloakboundary` directive, the unavailable
+  partial, and all `KeycloakAuthenticationException` catches are gone (the client lib has one type,
+  `UnexpectedKeycloakResponseException`).
+- **Config (§9)** — plugin ships a structure-only stub; real values live in the app at
+  `admin/config/filament-keycloak-admin.php`. The plugin never calls `env()`.
+- **Views** — six per-component blades collapsed to two shared (`keycloak-table`, `keycloak-infolist`).
+- **Event tables (§7.2)** — self-contained (the earlier generic abstract base was dropped; see §7.2).
+- **Tests (§11)** — plain PHPUnit; `phpunit.xml.dist` `unit`/`integration` suites; Testbench `TestCase`; the E2E
+  Integration suite (docker-compose + realm-import + `IntegrationTestCase` + driving tests) is in place. PHPStan level 5
+  passes. Rector removed (PHPStan + Pint only). Plugin-local `mise.toml` with `install`/`test`/`analyse`/`lint`/`e2e*`.
+
+**Open:** run `composer update` with the sibling lib resolvable (path repo / published tag) to refresh the lock;
+`auth_mode=sso` provider (§6); `.github/` CI (§12); client-lib `v1.0` tag (§13).
+
+---
+
 ## 1. Two packages
 
 | Package | Role | Depends on |
@@ -86,8 +113,7 @@ src/
         KeycloakUserGroupsTable.php
         KeycloakUserCredentialsTable.php
         KeycloakUserSessionsTable.php
-        AbstractKeycloakEventsTable.php      # shared base for the two event tables (PHPStan-generic over the DTO)
-        KeycloakUserEventsTable.php
+        KeycloakUserEventsTable.php          # self-contained (each event table owns its perPage+1 probe + typed dto())
         KeycloakAdminEventsTable.php
 config/filament-keycloak-admin.php            # structure-only stub (keys + docs, no values, no env()); real config lives in the app (§9)
 resources/
@@ -192,15 +218,14 @@ change shows up in admin history). Each write dispatches one Livewire event `key
 first open regardless, so the signal refreshes the whole screen without a reload. (Coarsest fallback if ever needed:
 redirect to `InspectKeycloakUser::getUrl([...])` — a full reload, active tab preserved by the query-string persist.)
 
-The two event tables share `AbstractKeycloakEventsTable` for the **type-agnostic mechanics**: the `perPage+1` probe,
-event→`KeycloakRecord` mapping, `render()`, and the Details-modal action skeleton. The **DTO type is the one thing that
-differs** (`KeycloakUserEvent` vs `KeycloakAdminEvent`), so no hard-coded `dto()` narrower lives in the base. Bind the
-type with **PHPStan generics**: `@template TEvent of object` on the abstract class; each subclass declares
-`@extends AbstractKeycloakEventsTable<KeycloakUserEvent>` and implements the seams that carry the type —
-`fetch(KeycloakUserId, int $first, int $max): iterable<TEvent>`, `columns()`, `detailEntries(TEvent)`, and
-`dtoClass(): class-string<TEvent>` (for the runtime `assert(instanceof)`). The base's `dto(KeycloakRecord): TEvent` is
-then correctly typed for both, with zero type-specific assertion in the base. Every table component renders the **single
-shared** `filament-keycloak-admin::livewire.keycloak-table` blade; Identity renders its own infolist blade.
+The two event tables are **self-contained** — each `KeycloakUserEventsTable` / `KeycloakAdminEventsTable` owns its own
+`perPage+1` probe, event→`KeycloakRecord` mapping, `table()` skeleton, Details-modal action, and a typed `dto()` narrower
+(`assert($event instanceof KeycloakUserEvent|KeycloakAdminEvent)`). An earlier shared abstract base was dropped: its seam
+was **wide** (four abstract methods) and it coupled the two subclasses through inheritance to save only a few lines —
+a shallow base with a wide interface, the exact smell §14.1 warns against. Standalone also matches the other four table
+components (groups/credentials/sessions), which are already self-contained. The small duplication between the two event
+tables is the deliberate, cheaper trade. Every table component renders the **single shared**
+`filament-keycloak-admin::livewire.keycloak-table` blade; Identity renders its own infolist blade.
 
 
 ---
@@ -318,6 +343,9 @@ Ships as its own repo, sibling to `sandstorm/keycloak-admin-api`.
 
 ## 13. Open items
 
+- **Refresh `composer.lock`** — run `composer update` with the sibling `sandstorm/keycloak-admin-api` resolvable (the
+  admin app's `DistributionPackages/*` path repository, or a published tag) so the lock drops Pest and picks up the
+  current requires.
 - **Client lib `v1.0` tag** — the plugin requires `^1.0`; tag `sandstorm/keycloak-admin-api` before the plugin can go
   `minimum-stability: stable`.
 - **SSO client mapper** (§6) — confirm the panel's OIDC client issues `realm-management` roles + audience; hard

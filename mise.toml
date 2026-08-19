@@ -1,0 +1,51 @@
+# Standalone task runner for the filament-keycloak-admin plugin. Run from this directory:
+#   mise run install
+#   mise run test
+# The plugin is self-contained (its own vendor/); it does not borrow any sibling package's toolchain.
+
+[tasks.install]
+description = "Install Composer dependencies"
+dir = "{{config_root}}"
+run = "composer install"
+
+[tasks.test]
+description = "Run the unit/feature suite (hermetic, no Keycloak)"
+dir = "{{config_root}}"
+run = "vendor/bin/phpunit --testsuite unit"
+
+[tasks.analyse]
+description = "Static analysis"
+dir = "{{config_root}}"
+run = "vendor/bin/phpstan analyse"
+
+[tasks.lint]
+description = "Check code style"
+dir = "{{config_root}}"
+run = "vendor/bin/pint --test"
+
+# --- End-to-end: real Keycloak in Docker (opt-in) ---------------------------------------------------
+
+[tasks."e2e:up"]
+description = "Boot a throwaway Keycloak 26.5.3 + MailPit with the test realm imported"
+dir = "{{config_root}}"
+run = "docker compose -f tests/Integration/docker-compose.yml up -d --wait"
+
+[tasks."e2e:down"]
+description = "Tear the throwaway Keycloak down (and drop its volumes)"
+dir = "{{config_root}}"
+run = "docker compose -f tests/Integration/docker-compose.yml down -v"
+
+[tasks."test:integration"]
+description = "Run the end-to-end suite against the booted Keycloak"
+dir = "{{config_root}}"
+env = { KEYCLOAK_E2E_BASE_URL = "http://localhost:9911" }
+run = "vendor/bin/phpunit --testsuite integration"
+
+[tasks.e2e]
+description = "Full E2E cycle: boot Keycloak, run the integration suite, tear down"
+dir = "{{config_root}}"
+run = [
+    "mise run e2e:up",
+    "mise run test:integration",
+    "mise run e2e:down",
+]

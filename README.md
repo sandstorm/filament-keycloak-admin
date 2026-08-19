@@ -1,87 +1,76 @@
-# Keycloak Filament Admin UI
+# Filament Keycloak Admin
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/broodfonds/keycloak-filament-admin.svg?style=flat-square)](https://packagist.org/packages/broodfonds/keycloak-filament-admin)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/broodfonds/keycloak-filament-admin/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/broodfonds/keycloak-filament-admin/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/broodfonds/keycloak-filament-admin/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/broodfonds/keycloak-filament-admin/actions?query=workflow%3A"Fix+PHP+code+styling"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/broodfonds/keycloak-filament-admin.svg?style=flat-square)](https://packagist.org/packages/broodfonds/keycloak-filament-admin)
+A Filament v4 admin panel to manage Keycloak users through the Keycloak Admin REST API. Keycloak is
+the source of truth — there is no local user mirror. This package is **UI only**; every HTTP call goes
+through the standalone client library [`sandstorm/keycloak-admin-api`](https://github.com/sandstorm/keycloak-admin-api).
 
-
-
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
+- **Target:** Filament v4, PHP ^8.3, Keycloak 26.5.3+.
+- **Features:** searchable user list; per-user detail with Identity, Groups (add/remove), Security/2FA
+  (remove second factors), Active sessions (log out all), User events, and Admin history; a
+  "Send password-reset email" action.
 
 ## Installation
 
-You can install the package via composer:
-
 ```bash
-composer require broodfonds/keycloak-filament-admin
+composer require sandstorm/filament-keycloak-admin
 ```
 
-> [!IMPORTANT]
-> If you have not set up a custom theme and are using Filament Panels follow the instructions in the [Filament Docs](https://filamentphp.com/docs/4.x/styling/overview#creating-a-custom-theme) first.
+Register the plugin on a panel:
 
-After setting up a custom theme add the plugin's views to your theme css file or your app's css file if using the standalone packages.
+```php
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 
-```css
-@source '../../../../vendor/broodfonds/keycloak-filament-admin/resources/**/*.blade.php';
+$panel->plugin(FilamentKeycloakAdminPlugin::make());
 ```
 
-You can publish and run the migrations with:
+## Configuration
 
-```bash
-php artisan vendor:publish --tag="keycloak-filament-admin-migrations"
-php artisan migrate
-```
-
-You can publish the config file with:
-
-```bash
-php artisan vendor:publish --tag="keycloak-filament-admin-config"
-```
-
-Optionally, you can publish the views using
-
-```bash
-php artisan vendor:publish --tag="keycloak-filament-admin-views"
-```
-
-This is the contents of the published config file:
+The plugin reads resolved `config('filament-keycloak-admin.*')` and never calls `env()` itself — the
+consuming app owns the authoritative config. Provide `config/filament-keycloak-admin.php` in your app:
 
 ```php
 return [
+    'connection' => [
+        'base_url'      => 'https://keycloak.example/',
+        'realm'         => 'YourRealm',
+        'client_id'     => 'admin-panel-serviceaccount',
+        'client_secret' => '…',
+    ],
+    'auth_mode' => 'service_account', // 'service_account' | 'sso' (planned)
+    'http' => [
+        'connect_timeout' => 5,
+        'timeout'         => 15,
+    ],
+    'pw_reset' => [
+        'lifespan'     => 43200,
+        'client_id'    => null,
+        'redirect_uri' => null,
+    ],
 ];
 ```
 
-## Usage
+The package publishes only a structure-only stub (keys + docs, no values, no `env()`).
 
-```php
-$keycloakFilamentAdmin = new Sandstorm\FilamentKeycloakAdmin();
-echo $keycloakFilamentAdmin->echoPhrase('Hello, Broodfonds!');
-```
+### Auth modes
+
+- **`service_account`** (wired today) — a `client_credentials` grant on a confidential client with the
+  required `realm-management` roles: `view-users`, `manage-users`, `query-users`, `query-groups` (plus
+  `view-events` for the event tabs). One shared identity.
+- **`sso`** (planned) — reuse the logged-in admin's Keycloak SSO token as the Admin-API bearer for real
+  per-person attribution in admin events. Until it lands, `auth_mode=sso` throws.
+
+There is **no fallback**: a misconfigured or underprivileged mode fails loudly. Every failure (including
+401/403) propagates to the framework error page.
 
 ## Testing
 
 ```bash
-composer test
+composer test              # unit/feature suite (hermetic)
+composer test:integration  # E2E against a real Keycloak (opt-in; requires KEYCLOAK_E2E_BASE_URL)
+composer analyse           # PHPStan
+composer test:lint         # Pint
 ```
-
-## Changelog
-
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](.github/SECURITY.md) on how to report security vulnerabilities.
-
-## Credits
-
-- [Sebastian Kurfuerst](https://github.com/skurfuerst)
-- [All Contributors](../../contributors)
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+MIT. See [LICENSE.md](LICENSE.md).

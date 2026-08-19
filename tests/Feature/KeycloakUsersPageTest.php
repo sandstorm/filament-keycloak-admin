@@ -1,24 +1,40 @@
 <?php
 
+declare(strict_types=1);
+
+namespace Sandstorm\FilamentKeycloakAdmin\Tests\Feature;
+
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\ViewKeycloakUser;
-use Sandstorm\FilamentKeycloakAdmin\KeycloakFilamentAdminPlugin;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
+use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Filament\Panel;
+use PHPUnit\Framework\Attributes\Test;
 
-it('registers the Keycloak Users list and detail pages on the panel', function () {
-    $panel = Panel::make();
+final class KeycloakUsersPageTest extends TestCase
+{
+    #[Test]
+    public function it_registers_the_list_and_detail_pages_on_the_panel(): void
+    {
+        $panel = Panel::make();
 
-    KeycloakFilamentAdminPlugin::make()->register($panel);
+        FilamentKeycloakAdminPlugin::make()->register($panel);
 
-    expect($panel->getPages())
-        ->toContain(KeycloakUsers::class)
-        ->toContain(ViewKeycloakUser::class);
-});
+        $pages = $panel->getPages();
 
-it('routes the detail page with a userId parameter for deep-linking', function () {
-    expect(ViewKeycloakUser::getRoutePath(Panel::make()))->toBe('/keycloak-users/{userId}');
-});
+        $this->assertContains(KeycloakUsers::class, $pages);
+        $this->assertContains(InspectKeycloakUser::class, $pages);
+    }
 
-it('exposes a navigation label', function () {
-    expect(KeycloakUsers::getNavigationLabel())->toBe('Keycloak Users');
-});
+    #[Test]
+    public function it_routes_the_detail_page_with_a_user_id_parameter_for_deep_linking(): void
+    {
+        $this->assertSame('/keycloak-users/{userId}', InspectKeycloakUser::getRoutePath(Panel::make()));
+    }
+
+    #[Test]
+    public function it_exposes_a_navigation_label(): void
+    {
+        $this->assertSame('Keycloak Users', KeycloakUsers::getNavigationLabel());
+    }
+}
