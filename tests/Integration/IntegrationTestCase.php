@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Integration;
 
-use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
-use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Filament\Facades\Filament;
 use GuzzleHttp\Client;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
+use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 

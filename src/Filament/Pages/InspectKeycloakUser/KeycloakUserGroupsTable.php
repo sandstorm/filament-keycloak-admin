@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
@@ -21,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi\Dto\KeycloakGroup;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -66,6 +66,7 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
     public function table(Table $table): Table
     {
         return $table
+            ->heading('Group memberships')
             ->records(fn (): Collection => $this->loadGroups())
             ->columns([
                 TextColumn::make('name')->state(fn (KeycloakRecord $record): string => self::dto($record)->name),
@@ -90,6 +91,7 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
         return Action::make('addGroups')
             ->label('Add to group')
             ->icon(Heroicon::OutlinedUserPlus)
+            ->color('gray')
             ->schema([
                 Select::make('groupIds')
                     ->label('Groups to add')

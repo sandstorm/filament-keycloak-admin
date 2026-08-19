@@ -38,7 +38,7 @@ final class KeycloakRecord extends Model
 
     public static function for(string $key, object $dto): self
     {
-        $record = new self();
+        $record = new self;
         $record->setAttribute('id', $key);
         $record->keycloakDto = $dto;
 

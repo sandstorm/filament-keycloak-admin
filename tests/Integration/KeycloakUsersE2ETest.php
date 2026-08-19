@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Integration;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;

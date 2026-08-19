@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
@@ -20,6 +19,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi\Dto\KeycloakSession;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -62,6 +62,7 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
     public function table(Table $table): Table
     {
         return $table
+            ->heading('Active sessions')
             ->records(fn (): Collection => $this->loadSessions())
             ->columns([
                 TextColumn::make('ipAddress')->label('IP address')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->ipAddress)->placeholder('—'),

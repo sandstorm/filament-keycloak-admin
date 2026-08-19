@@ -4,31 +4,26 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages;
 
+use Filament\Pages\Page;
+use Filament\Panel;
+use Filament\Schemas\Components\Livewire;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Schema;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakAdminEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
-use Filament\Actions\Action;
-use Filament\Notifications\Notification;
-use Filament\Pages\Page;
-use Filament\Panel;
-use Filament\Schemas\Components\Livewire;
-use Filament\Schemas\Components\Tabs;
-use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
-use function config;
-
 /**
  * Detail page for one Keycloak user, on its own route (`/keycloak-users/{userId}`) so a user is
- * deep-linkable and shareable — not a modal. Named **Inspect** because it carries write actions
- * (password-reset email, and the per-tab mutations) alongside the reads.
+ * deep-linkable and shareable — not a modal. Named **Inspect** because the embedded sections carry write
+ * actions (identity edit + enable toggle, group membership, credential/password operations) alongside
+ * the reads.
  *
  * The page fetches almost nothing itself — it is a **tab orchestrator**: {@see self::detailSchema()}
  * builds Filament `Tabs`, each embedding one or more child Livewire components that own their own
@@ -44,8 +39,6 @@ final class InspectKeycloakUser extends Page
 
     public ?string $userId = null;
 
-    protected KeycloakCredentialsApi $credentialsApi;
-
     protected KeycloakUsersApi $usersApi;
 
     /**
@@ -54,9 +47,8 @@ final class InspectKeycloakUser extends Page
      */
     private KeycloakUser | false $resolvedUser = false;
 
-    public function boot(KeycloakCredentialsApi $credentialsApi, KeycloakUsersApi $usersApi): void
+    public function boot(KeycloakUsersApi $usersApi): void
     {
-        $this->credentialsApi = $credentialsApi;
         $this->usersApi = $usersApi;
     }
 
@@ -82,46 +74,6 @@ final class InspectKeycloakUser extends Page
         }
 
         return $this->resolvedUser = $this->usersApi->getById(new KeycloakUserId((string) $this->userId));
-    }
-
-    /**
-     * Header actions — user-level writes (as opposed to the per-tab reads/mutations).
-     *
-     * Send a password-reset email: Keycloak mails the user a time-limited UPDATE_PASSWORD link — the
-     * preferred reset path, the admin never sees or sets the password (plan §7.2). Requires realm SMTP.
-     */
-    protected function getHeaderActions(): array
-    {
-        return [
-            $this->triggerPasswordResetAction(),
-        ];
-    }
-
-    private function triggerPasswordResetAction(): Action
-    {
-        return Action::make('triggerPasswordReset')
-            ->label('Send password-reset email')
-            ->icon(Heroicon::OutlinedEnvelope)
-            ->color('warning')
-            ->requiresConfirmation()
-            ->modalHeading('Send a password-reset email?')
-            ->modalDescription('Keycloak will email this user a time-limited link to set a new password. You will not see or set the password yourself. Requires realm SMTP to be configured.')
-            ->modalSubmitActionLabel('Send email')
-            ->action(function (): void {
-                $this->credentialsApi->executeActionsEmail(
-                    new KeycloakUserId((string) $this->userId),
-                    ['UPDATE_PASSWORD'],
-                    config('filament-keycloak-admin.pw_reset.lifespan'),
-                    config('filament-keycloak-admin.pw_reset.client_id'),
-                    config('filament-keycloak-admin.pw_reset.redirect_uri'),
-                );
-
-                Notification::make()
-                    ->title('Password-reset email sent')
-                    ->body('Keycloak has emailed the user a link to set a new password.')
-                    ->success()
-                    ->send();
-            });
     }
 
     /**

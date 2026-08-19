@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
@@ -19,6 +18,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\Paginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakAdminEvent;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -63,6 +63,7 @@ final class KeycloakAdminEventsTable extends Component implements HasActions, Ha
     public function table(Table $table): Table
     {
         return $table
+            ->heading('Admin history')
             ->records(fn (int $page, int $recordsPerPage): Paginator => $this->loadEvents($page, $recordsPerPage))
             ->paginationPageOptions([10, 25, 50])
             ->columns([

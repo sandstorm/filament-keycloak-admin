@@ -117,6 +117,7 @@ final class SsoActAsUserE2ETest extends TestCase
         // Staff peer: viewable (view-all) but not manageable — Keycloak denies the write with 403.
         $jane = $staff->getById($janeId);
         self::assertSame('jane', $jane->username, 'a staff member should still be able to *view* another staff member');
+
         try {
             $staff->update($jane->withFirstName('ShouldNotStick'));
             self::fail('a staff member must not be allowed to manage another staff member');
@@ -159,7 +160,8 @@ final class SsoActAsUserE2ETest extends TestCase
     {
         $settings = new KeycloakSettings($this->baseUrl, $realm, 'unused-by-transport', 'unused-by-transport');
 
-        $settingsProvider = new readonly class($settings) implements KeycloakSettingsProvider {
+        $settingsProvider = new readonly class($settings) implements KeycloakSettingsProvider
+        {
             public function __construct(private KeycloakSettings $settings) {}
 
             public function get(): KeycloakSettings
@@ -172,7 +174,7 @@ final class SsoActAsUserE2ETest extends TestCase
             new InMemoryAdminKeycloakSession(new AdminKeycloakTokens($accessToken, 'unused-refresh')),
         );
 
-        $httpFactory = new HttpFactory();
+        $httpFactory = new HttpFactory;
 
         return new KeycloakTransport($settingsProvider, new Client(['timeout' => 10]), $httpFactory, $httpFactory, $provider);
     }

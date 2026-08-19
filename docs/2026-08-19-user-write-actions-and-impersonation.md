@@ -17,9 +17,29 @@ prior docs.
   mutators + `toRepresentation()`. Unit 47/47 + PHPStan L6 clean. FGAP group policy (`staff can view all` +
   `staff can manage endusers` on the specific `/endusers` group) **baked** into `realm-import-fgap.json` and
   proven by a real-write E2E (sarah edits emma ✔ / denied jane 403). **All E2E green.**
-- **← NEXT: Slice 3** — plugin editable Identity + activate/deactivate. First add `KeycloakUser.access`
-  (caller-relative capability map) so the UI gates edit controls up front; then the Filament form → `update()`.
-  See §8 for the full remaining sequence (User-Profile attributes, then impersonation).
+- ✅ **Slice 3, Step A** — lib `KeycloakUser.access` (caller-relative capability map) shipped:
+  `KeycloakUserAccess` VO (tolerant, all-false-safe), parsed in `fromRawResponse`, `toRepresentation()`
+  untouched (round-trips via `$raw`). Unit 53/53 + PHPStan L6 clean. **FGAP made self-contained in the lib**:
+  copied `realm-import-fgap.json`, both realms in `docker-compose.yml`, test-only `DirectGrantTokenProvider`
+  + `IntegrationTestCase::transportActingAs()`, README two-realm table + staff-policy diagram. E2E
+  `KeycloakUserAccessE2ETest` **green** over both realms (off: role-holder manage=true; on: sarah manage
+  emma=true / jane=false, view both).
+- ✅ **Slice 3, Step B** — plugin editable Identity + activate/deactivate, **E2E green + manually verified**.
+  `KeycloakUserIdentity` now has: a live enable/disable **toggle** (stock-KC style, immediate `update()` via
+  `setEnabled()`), and an **Edit** modal (firstName/lastName/emailVerified → lossless RMW `update()`)
+  surfaced as small gray **pencil hint-actions inline on the Name + Email-verified fields** (tooltip
+  "Edit"). Both gated on `user.access.manage`: when the caller may not manage the user the pencil is
+  **disabled + tooltip** (not hidden) and the toggle is disabled. New `InteractsWithKeycloakWrites` trait
+  turns a 401/403 into a friendly notice (scoped exception to §8; other failures propagate); the toggle
+  reverts to the server's truth on a denied/failed flip. New blade `keycloak-identity.blade.php`. **UX
+  polish landed**: password-reset email moved into the **Credentials & 2FA** section (it's a credential op)
+  and de-emphasised to gray; add-to-group also gray; red reserved for destructive removes; every embedded
+  section gained a heading ("Group memberships", "Credentials & 2FA", "Active sessions", "User events",
+  "Admin history"). E2E: `KeycloakUserWriteActionsE2ETest` (+edit name, +enable toggle, +reset-email via
+  credentials header, net-zero, service_account/test-realm) and `KeycloakIdentityGatingFgapE2ETest` (sso as
+  sarah on fgap: Edit enabled on emma / disabled on jane; a forced denied write → friendly notice, no
+  mutation). Unit 9/9 + PHPStan clean.
+- **← NEXT: Slice 4** — lib `KeycloakRealmApi::getUserProfile` (§5). See §8.
 
 Test entry points: lib `mise run test` / `mise run analyse`; plugin `mise run test`; full E2E `mise run e2e`
 (only e2e boots Keycloak). Keycloak console `admin`/`admin` @ `:9911`; seeded users password `changeit`.
@@ -152,8 +172,10 @@ omitted fields. So:
 gains no `null` identity keys. Plus `KeycloakUsersApiTest`: `update()` PUTs to `/users/{id}` preserving
 unmodelled fields, and a 403 surfaces as `UnexpectedKeycloakResponseException` (the FGAP-deny path).
 
-> **Not yet built:** `KeycloakUser.access` (the caller-relative capability map from §2.1) is **not** surfaced
-> on the DTO yet — deferred to slice 3, where the UI gates edit controls off it.
+> **✅ BUILT (slice 3 Step A):** `KeycloakUser.access` (the caller-relative capability map from §2.1) is now
+> surfaced on the DTO via the `KeycloakUserAccess` VO — tolerant parse, all-false-safe when absent,
+> round-trips losslessly (kept in `$raw`, `toRepresentation()` never writes it). The UI gates edit controls
+> off `user.access.manage` (§4).
 
 ### 3.2 Reset password — email-link only (decided)
 
@@ -189,36 +211,55 @@ run against **two seeded realms**, same KC instance (Keycloak `--import-realm` i
 | **`test-realm`** (exists) | **Off** | classic `realm-management` roles | writes work; a caller with roles gets `user.access.manage = true` for everyone; a caller lacking a role gets a blanket 403 |
 | **`test-realm-fgap`** (new) | **On** | scoped policies per user/group | a **scoped** admin gets `user.access.manage = true` for *permitted* users and **false** for others; a write to a permitted user 2xx's, to a forbidden user **403**s — same code, per-user outcome |
 
-Seed in `test-realm-fgap`: FGAP enabled; a `scoped-admin` user granted `manage`/`view` on group **/staff**
-only; `jane` in `/staff` (editable), `bob` outside it (read-only-to-scoped-admin); the OIDC/direct-grant client
-so a **user** bearer can be obtained.
+Seed in `test-realm-fgap` (as built): FGAP enabled; **sarah** (staff) granted by the group policy
+*view all* + *manage members of /endusers* only, holding **no** realm-management roles; **jane** in `/staff`
+(a peer sarah may view but not manage), **emma** in `/endusers` (sarah may manage); `admin-user`
+(realm-management roles), `login-user` (none); the public **`e2e-login`** direct-grant client so a **user**
+bearer can be obtained.
 
 **How each layer injects the identity under test (no heloufir in either):**
-- **Lib E2E** — inject a tiny `KeycloakTokenProvider` that direct-grants the `scoped-admin` (or a role-holder)
-  and hands the transport that bearer. Proves the wire contract honours FGAP purely at the API layer.
-- **Plugin E2E** — seed the faked `AdminKeycloakSession` (§2.1) with that same user token, `auth_mode=sso`.
-  Proves the provider → transport → capability-gated UI path end-to-end.
+- **Lib E2E** — a test-only `DirectGrantTokenProvider` (implements `KeycloakTokenProvider`, `tests/Support/`)
+  direct-grants the user via `e2e-login` and hands the transport that bearer, wired by
+  `IntegrationTestCase::transportActingAs($realm, $username)`. Proves the wire contract honours FGAP purely
+  at the API layer.
+- **Plugin E2E** — seed the faked `AdminKeycloakSession` (§2.1) with that same user token, `auth_mode=sso`
+  (see `KeycloakIdentityGatingFgapE2ETest`, which forces sso + the fgap realm and binds an
+  `InMemoryAdminKeycloakSession` for sarah). Proves the provider → transport → capability-gated UI path
+  end-to-end.
 
-Parameterise the E2E base class by realm (`KEYCLOAK_E2E_REALM`) so each behaviour test runs twice (off/on) via
-a data provider or paired subclasses. The **off** realm is the regression net that FGAP support didn't break
-classic role auth; the **on** realm proves per-admin enforcement + the `user.access` reflection.
+Both realms are imported into the same KC (`--import-realm`). The **off** realm (`test-realm`) is the
+regression net that FGAP support didn't break classic role auth; the **on** realm (`test-realm-fgap`) proves
+per-admin enforcement + the `user.access` reflection. The lib's SSO/behaviour suites run both via a realm data
+provider; the plugin's FGAP gating is a dedicated subclass. `KEYCLOAK_E2E_REALM` selects the default realm for
+the non-FGAP suites.
 
 ---
 
-## 4. Plugin UI changes (`InspectKeycloakUser`)
+## 4. Plugin UI changes (`InspectKeycloakUser`) — ✅ BUILT (Slice 3 Step B)
 
-- **Identity tab → editable.** `KeycloakUserIdentity` gains an **Edit** action (Filament form action): first name, last
-  name, email-verified toggle, enabled toggle → one `usersApi->update()` call. Attributes editing (§5) is a repeater in
-  the same form if kept.
-- **Activate / deactivate** — a header action (or the enabled toggle in Edit); `requiresConfirmation` for deactivate.
-  Dispatches `keycloak-user-changed` so sibling tabs refresh (initial-plan §7.2 cross-tab signal).
-- **Reset password** — a header action, modal with two choices: *(a)* "Send reset email" (existing
-  `executeActionsEmail`, default/recommended) and *(b)* "Set password directly" (§3.2), password field + temporary
-  toggle, `requiresConfirmation`, explicit warning.
-- **Impersonate** — header action; behaviour per §6.
+Shipped shape (differs from the original sketch — recorded here as the source of truth):
 
-All write actions catch `UnexpectedKeycloakResponseException` with `statusCode` 401/403 → friendly "You do not have
-permission" notice (§2); other failures still propagate.
+- **Identity → editable.** `KeycloakUserIdentity` carries an **Edit** modal (firstName, lastName,
+  email-verified) → one lossless `usersApi->update()`. It is surfaced **not** as a big header button but as
+  a small gray **pencil hint-action inline on each editable field** (Name + Email-verified), tooltip
+  "Edit" — the affordance sits next to what it changes.
+- **Activate / deactivate** — a **live enable/disable toggle** (a one-field `enabledData` form), like the
+  stock Keycloak user page: flipping it writes immediately via `setEnabled()` (no separate confirm, matching
+  KC). Reverts to the server's actual state on a denied/failed flip. Dispatches `keycloak-user-changed` so
+  sibling sections refresh (initial-plan §7.2 cross-tab signal).
+- **Capability gating (§2.1).** Both controls are driven off `user.access.manage`: when the caller may not
+  manage the user the pencil is **disabled with an explaining tooltip** (not hidden — stays discoverable)
+  and the toggle is disabled.
+- **Reset password** — **email-link only** (§3.2, no set-password). Lives in the **Credentials & 2FA**
+  section as a gray header action (it is a credential operation, not a page-level one), `requiresConfirmation`.
+- **De-emphasised styling.** Non-destructive actions (edit, reset-email, add-to-group) are **gray**; red is
+  reserved for real removes (remove-from-group, remove-credential). Every embedded section has a heading.
+- **Impersonate** — not built; §6, blocked on §7.1.
+
+Write guard (`InteractsWithKeycloakWrites` trait, §7.2 taxonomy): a write that returns
+`UnexpectedKeycloakResponseException` with `statusCode` 401/403 → friendly "You do not have permission to make
+this change." notice, and the caller skips its success notice / cross-tab signal; **every other failure
+propagates** (network, 5xx, unexpected 4xx). Reads are unchanged.
 
 ---
 
@@ -322,19 +363,20 @@ cookie/redirect behaviour empirically before building the action.
 
 **Resolved:** set-password → **email-link only** (§3.2); attributes → **User Profile-driven, no free-form**
 (§5); "see what I can edit" → **`user.access` capability map** (§2.1); heloufir → **prod adapter behind a seam,
-faked in tests** (§2.1); impersonation lib call → **dropped** (§3.3/§6).
+faked in tests** (§2.1); impersonation lib call → **dropped** (§3.3/§6); **write failure taxonomy** →
+**decided + built** (`InteractsWithKeycloakWrites`, §4): a write's 401/403 → friendly notice, every other
+failure propagates, reads unchanged.
 
 **Still open:**
 
 1. **Impersonation origin topology (§6.4)** — is Keycloak same-site with the panel, or can we reverse-proxy it
    under the panel's domain? If yes → replicate the console (6.2), the recommended path. Also: which target
    app(s) does the new window open into? Blocks all impersonation work. **Top question.**
-2. **Write failure taxonomy** — confirm: writes catch 401/403 → friendly notice; everything else propagates;
-   reads unchanged (scoped exception to initial-plan §8).
-3. **`sso` deployment prereq** — confirm heloufir's OIDC client issues tokens carrying `realm-management`
+2. **`sso` deployment prereq** — confirm heloufir's OIDC client issues tokens carrying `realm-management`
    roles + audience, else FGAP writes 403 with no fallback (initial-plan §6/§15).
-4. **Interim under `service_account`** — ship writes before `sso` lands (coarse identity, no per-admin audit),
-   or hard-block writes until `sso`?
+3. **Interim under `service_account`** — ship writes before `sso` lands (coarse identity, no per-admin audit),
+   or hard-block writes until `sso`? (Note: writes are already live in both modes; under `service_account`
+   the `access` map reflects the shared identity's roles, so gating still works but is not per-admin.)
 
 ## 8. Sequencing — every slice TDD (E2E-focused, against real KC in the API layer)
 
@@ -345,11 +387,12 @@ faked in tests** (§2.1); impersonation lib call → **dropped** (§3.3/§6).
    lossless round-trip + edit overlay + 403 surfacing (47/47, PHPStan L6). E2E: `SsoActAsUserE2ETest::a_staff_member_may_edit_an_enduser_but_not_another_staff_member`
    proves the FGAP group policy through a real write (sarah edits emma ✔, denied jane 403). Note:
    `KeycloakUser.access` capability map **deferred to slice 3**.
-3. **← NEXT — Plugin: editable Identity + activate/deactivate** (§4). Needs the capability map first: add
-   `KeycloakUser.access` (parse the caller-relative `access` object from `GET /users/{id}`) so the UI can gate
-   edit controls (show-what-I-can-edit, §2.1) instead of only reacting to a 403. Then the Filament form
-   (firstName/lastName/email/enabled/emailVerified) calling `update()`.
-4. **Lib: `KeycloakRealmApi::getUserProfile`** (§5) — E2E parse of real profile config.
+3. ✅ **DONE — Plugin: editable Identity + activate/deactivate** (§4). Step A: `KeycloakUser.access` map,
+   E2E green both realms (`KeycloakUserAccessE2ETest`). Step B: Edit modal (inline pencil hint-actions) +
+   live enable toggle, both gated on `user.access.manage`, `InteractsWithKeycloakWrites` 401/403 notice;
+   UX polish (reset-email → Credentials section, gray non-destructive actions, section headings). E2E:
+   `KeycloakUserWriteActionsE2ETest` + `KeycloakIdentityGatingFgapE2ETest`. Unit + PHPStan clean.
+4. **← NEXT — Lib: `KeycloakRealmApi::getUserProfile`** (§5) — E2E parse of real profile config.
 5. **Plugin: attribute fields rendered from User Profile** (§5).
 6. **Impersonation** (§6) — blocked on §7.1; last.
 

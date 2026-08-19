@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
@@ -21,11 +20,13 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi\Dto\KeycloakCredential;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function assert;
+use function config;
 use function sprintf;
 use function view;
 
@@ -67,6 +68,7 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
     public function table(Table $table): Table
     {
         return $table
+            ->heading('Credentials & 2FA')
             ->records(fn (): Collection => $this->loadCredentials())
             ->columns([
                 TextColumn::make('type')->badge()->state(fn (KeycloakRecord $record): string => self::dto($record)->type),
@@ -74,10 +76,45 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
                 TextColumn::make('createdAt')->label('Created')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedCreatedAt()),
                 IconColumn::make('secondFactor')->label('Second factor')->boolean()->state(fn (KeycloakRecord $record): bool => self::dto($record)->isSecondFactor()),
             ])
+            ->headerActions([
+                $this->triggerPasswordResetAction(),
+            ])
             ->recordActions([
                 $this->removeCredentialAction(),
             ])
             ->emptyStateHeading('No credentials stored.');
+    }
+
+    /**
+     * Send a password-reset email — Keycloak mails the user a time-limited UPDATE_PASSWORD link (the only
+     * password path; the admin never sees or sets it, plan §3.2/§7.2). Lives in the credentials section
+     * since it is a credential operation. Requires realm SMTP. Neutral styling — it is not destructive.
+     */
+    private function triggerPasswordResetAction(): Action
+    {
+        return Action::make('triggerPasswordReset')
+            ->label('Send password-reset email')
+            ->icon(Heroicon::OutlinedEnvelope)
+            ->color('gray')
+            ->requiresConfirmation()
+            ->modalHeading('Send a password-reset email?')
+            ->modalDescription('Keycloak will email this user a time-limited link to set a new password. You will not see or set the password yourself. Requires realm SMTP to be configured.')
+            ->modalSubmitActionLabel('Send email')
+            ->action(function (): void {
+                $this->credentialsApi->executeActionsEmail(
+                    new KeycloakUserId($this->userId),
+                    ['UPDATE_PASSWORD'],
+                    config('filament-keycloak-admin.pw_reset.lifespan'),
+                    config('filament-keycloak-admin.pw_reset.client_id'),
+                    config('filament-keycloak-admin.pw_reset.redirect_uri'),
+                );
+
+                Notification::make()
+                    ->title('Password-reset email sent')
+                    ->body('Keycloak has emailed the user a link to set a new password.')
+                    ->success()
+                    ->send();
+            });
     }
 
     /**

@@ -8,13 +8,14 @@ use Filament\Actions\Testing\TestAction;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function app;
@@ -34,7 +35,7 @@ use function count;
 final class KeycloakUserWriteActionsE2ETest extends IntegrationTestCase
 {
     /**
-     * Header action on the detail page → `executeActionsEmail(['UPDATE_PASSWORD'])`. Succeeds only
+     * Credentials-table header action → `executeActionsEmail(['UPDATE_PASSWORD'])`. Succeeds only
      * because the realm's SMTP points at MailPit; no action error = Keycloak accepted the request.
      */
     #[Test]
@@ -42,8 +43,8 @@ final class KeycloakUserWriteActionsE2ETest extends IntegrationTestCase
     {
         $userId = (string) $this->seededUserId()->value;
 
-        Livewire::test(InspectKeycloakUser::class, ['userId' => $userId])
-            ->callAction('triggerPasswordReset')
+        Livewire::test(KeycloakUserCredentialsTable::class, ['userId' => $userId])
+            ->callAction(TestAction::make('triggerPasswordReset')->table())
             ->assertHasNoActionErrors();
     }
 
@@ -133,6 +134,55 @@ final class KeycloakUserWriteActionsE2ETest extends IntegrationTestCase
             $remainingIds[] = $credential->id;
         }
         self::assertNotContains($otpId, $remainingIds, 'the OTP second factor should be gone after removal');
+    }
+
+    /**
+     * Identity-tab `editIdentity` action → read-modify-write `update()`. Edits jane's first name through
+     * the real Filament action lifecycle, verifies it persisted server-side, then restores the seed.
+     */
+    #[Test]
+    public function edit_identity_action_updates_the_name(): void
+    {
+        $users = app(KeycloakUsersApi::class);
+        $janeId = $this->seededUserId();
+        $before = $users->getById($janeId);
+
+        try {
+            Livewire::test(KeycloakUserIdentity::class, ['userId' => (string) $janeId->value])
+                ->callAction('editIdentity', [
+                    'firstName' => 'JaneEdited',
+                    'lastName' => $before->lastName,
+                    'emailVerified' => $before->emailVerified,
+                ])
+                ->assertHasNoActionErrors();
+
+            self::assertSame('JaneEdited', $users->getById($janeId)->firstName, 'the edited first name should persist in Keycloak');
+        } finally {
+            $users->update($users->getById($janeId)->withFirstName($before->firstName));
+        }
+    }
+
+    /**
+     * Identity-tab live enable/disable toggle → `setEnabled()` → `update()`. Deactivates jane, verifies
+     * server-side, then reactivates so the read tests keep seeing an enabled user.
+     */
+    #[Test]
+    public function enable_toggle_deactivates_then_reactivates_the_user(): void
+    {
+        $users = app(KeycloakUsersApi::class);
+        $janeId = $this->seededUserId();
+
+        self::assertTrue($users->getById($janeId)->enabled, 'precondition: jane should start enabled');
+
+        try {
+            Livewire::test(KeycloakUserIdentity::class, ['userId' => (string) $janeId->value])
+                ->call('setEnabled', false)
+                ->assertHasNoErrors();
+
+            self::assertFalse($users->getById($janeId)->enabled, 'the user should be disabled after the toggle');
+        } finally {
+            $users->update($users->getById($janeId)->withEnabled(true));
+        }
     }
 
     private function realmGroupId(string $name): string
