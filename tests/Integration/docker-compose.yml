@@ -20,7 +20,10 @@ services:
     depends_on:
       - mailpit
     volumes:
+      # Both realms are imported at boot: test-realm (FGAP off) and test-realm-fgap (Admin
+      # Permissions on), so the sso act-as-user suite can prove the same code path in both modes.
       - ./realm-import.json:/opt/keycloak/data/import/realm-import.json:ro
+      - ./realm-import-fgap.json:/opt/keycloak/data/import/realm-import-fgap.json:ro
     healthcheck:
       # /health/ready is served on the management port (9000) in Keycloak 26.
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]

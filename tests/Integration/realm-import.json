@@ -74,6 +74,26 @@
             ]
         },
         {
+            "username": "admin-user",
+            "enabled": true,
+            "email": "admin-user@example.test",
+            "emailVerified": true,
+            "firstName": "Admin",
+            "lastName": "User",
+            "credentials": [
+                {"type": "password", "value": "changeit", "temporary": false}
+            ],
+            "clientRoles": {
+                "realm-management": [
+                    "view-users",
+                    "query-users",
+                    "query-groups",
+                    "manage-users",
+                    "view-events"
+                ]
+            }
+        },
+        {
             "username": "mfa-user",
             "enabled": true,
             "email": "mfa-user@example.test",
