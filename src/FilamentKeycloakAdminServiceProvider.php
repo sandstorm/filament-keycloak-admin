@@ -14,6 +14,9 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\Auth\AdminKeycloakSession;
+use Sandstorm\FilamentKeycloakAdmin\Auth\FilamentSsoTokenProvider;
+use Sandstorm\FilamentKeycloakAdmin\Auth\HeloufirAdminKeycloakSession;
 use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
 use GuzzleHttp\Client;
 use Sandstorm\KeycloakAdminApi\Connection\Auth\KeycloakTokenProvider;
@@ -78,7 +81,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
                     $httpFactory,
                     $httpFactory
                 ),
-                'sso' => throw new RuntimeException('Keycloak auth_mode "sso" is not implemented yet; use "service_account".', 1750000019),
+                'sso' => new FilamentSsoTokenProvider(self::resolveAdminKeycloakSession($app)),
                 default => throw new RuntimeException(sprintf('Unknown Keycloak auth_mode "%s"; expected "service_account" or "sso".', (string) $authMode), 1750000020),
             };
         });
@@ -108,6 +111,25 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         Livewire::component('keycloak-user-sessions-table', KeycloakUserSessionsTable::class);
         Livewire::component('keycloak-user-events-table', KeycloakUserEventsTable::class);
         Livewire::component('keycloak-admin-events-table', KeycloakAdminEventsTable::class);
+    }
+
+    /**
+     * The token source for `sso` (act-as-user) mode. The app may bind its own {@see AdminKeycloakSession}
+     * (any OIDC login library); otherwise this package falls back to the heloufir-backed adapter when
+     * heloufir is installed. Selecting `sso` without either is a loud configuration error — never a
+     * silent switch to the shared service account.
+     */
+    private static function resolveAdminKeycloakSession(Application $app): AdminKeycloakSession
+    {
+        if ($app->bound(AdminKeycloakSession::class)) {
+            return $app->make(AdminKeycloakSession::class);
+        }
+
+        if (HeloufirAdminKeycloakSession::isAvailable()) {
+            return new HeloufirAdminKeycloakSession();
+        }
+
+        throw new RuntimeException('Keycloak auth_mode "sso" needs an AdminKeycloakSession: bind one in the app, or install heloufir/filament-keycloak-sso for the bundled adapter.', 1755600010);
     }
 
     /**

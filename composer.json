@@ -24,6 +24,9 @@
         "spatie/laravel-package-tools": "^1.15.0",
         "sandstorm/keycloak-admin-api": "*"
     },
+    "suggest": {
+        "heloufir/filament-keycloak-sso": "OIDC login + session store for auth_mode=sso; the bundled HeloufirAdminKeycloakSession adapter reads the admin's token from it (or bind your own AdminKeycloakSession)."
+    },
     "require-dev": {
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.0",

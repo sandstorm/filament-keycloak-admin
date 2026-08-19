@@ -6,3 +6,7 @@ parameters:
     paths:
         - src
         - config
+    excludePaths:
+        # Optional integration with heloufir/filament-keycloak-sso, which is an app-provided dependency,
+        # not a dependency of this standalone package — so its symbols are absent during analysis here.
+        - src/Auth/HeloufirAdminKeycloakSession.php
