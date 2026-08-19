@@ -45,6 +45,7 @@ run = "vendor/bin/phpunit --testsuite integration"
 description = "Full E2E cycle: boot Keycloak, run the integration suite, tear down"
 dir = "{{config_root}}"
 run = [
+    "mise run e2e:down",
     "mise run e2e:up",
     "mise run test:integration",
     "mise run e2e:down",

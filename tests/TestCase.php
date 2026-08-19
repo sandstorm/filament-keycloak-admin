@@ -6,6 +6,8 @@ namespace Sandstorm\FilamentKeycloakAdmin\Tests;
 
 use BladeUI\Heroicons\BladeHeroiconsServiceProvider;
 use BladeUI\Icons\BladeIconsServiceProvider;
+use Illuminate\Config\Repository;
+use Orchestra\Workbench\WorkbenchServiceProvider;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
@@ -20,6 +22,7 @@ use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
+use Workbench\App\Providers\TelescopeServiceProvider;
 
 /**
  * Boots Laravel via Testbench with the Filament stack and this plugin's provider registered — a
@@ -36,20 +39,30 @@ abstract class TestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [
-            ActionsServiceProvider::class,
             BladeCaptureDirectiveServiceProvider::class,
             BladeHeroiconsServiceProvider::class,
             BladeIconsServiceProvider::class,
+
             FilamentServiceProvider::class,
-            FormsServiceProvider::class,
-            InfolistsServiceProvider::class,
-            LivewireServiceProvider::class,
-            NotificationsServiceProvider::class,
+            ActionsServiceProvider::class,
+            TablesServiceProvider::class,
             SchemasServiceProvider::class,
             SupportServiceProvider::class,
-            TablesServiceProvider::class,
-            WidgetsServiceProvider::class,
+            FormsServiceProvider::class,
+            InfolistsServiceProvider::class,
+
+            // CRUCIAL THAT THIS COMES LAST, just before this package's provider - otherwise
+            // tests fail with REALLY hard to debug Illuminate\Support\ViewErrorBag::put(): Argument #2 ($bag) must be of type Illuminate\Contracts\Support\MessageBag, null given, called in ...livewire/livewire/src/Features/SupportValidation/SupportValidation.php on line 22
+            LivewireServiceProvider::class,
             FilamentKeycloakAdminServiceProvider::class,
         ];
+    }
+
+    protected function defineEnvironment($app)
+    {
+        // Setup default database to use sqlite :memory:
+        tap($app['config'], function (Repository $config) {
+            $config->set('app.key', 'base64:hnuu2C3jj0wBW3IYrtNrRjXpK+qE5PnQa65nvcHeq90=');
+        });
     }
 }
