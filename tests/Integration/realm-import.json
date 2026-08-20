@@ -57,6 +57,10 @@
             "emailVerified": true,
             "firstName": "Jane",
             "lastName": "Doe",
+            "attributes": {
+                "department": ["Engineering"],
+                "costCenter": ["CC-100"]
+            },
             "credentials": [
                 {"type": "password", "value": "changeit", "temporary": false}
             ],
@@ -114,5 +118,18 @@
     "groups": [
         {"name": "staff"},
         {"name": "admins"}
-    ]
+    ],
+    "components": {
+        "org.keycloak.userprofile.UserProfileProvider": [
+            {
+                "providerId": "declarative-user-profile",
+                "subComponents": {},
+                "config": {
+                    "kc.user.profile.config": [
+                        "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"department\",\"displayName\":\"Department\",\"validations\":{\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"costCenter\",\"displayName\":\"Cost center\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[]},\"multivalued\":false}]}"
+                    ]
+                }
+            }
+        ]
+    }
 }

@@ -39,7 +39,32 @@ prior docs.
   credentials header, net-zero, service_account/test-realm) and `KeycloakIdentityGatingFgapE2ETest` (sso as
   sarah on fgap: Edit enabled on emma / disabled on jane; a forced denied write → friendly notice, no
   mutation). Unit 9/9 + PHPStan clean.
-- **← NEXT: Slice 4** — lib `KeycloakRealmApi::getUserProfile` (§5). See §8.
+- ✅ **Slice 4** — lib `KeycloakRealmApi::getUserProfile` (§5). New realm-config read slice:
+  `KeycloakRealmApi` interface + impl (`GET users/profile` → UPConfig) and DTOs
+  `KeycloakUserProfile` → `KeycloakUserProfileAttributes` (collection, `byName()` + `editableByAdmin()`)
+  → `KeycloakUserProfileAttribute` (name, displayName, required = `required`-key presence, multivalued,
+  group, raw `validations` map + typed helpers `maxLength/minLength/pattern/requiresEmailFormat`) →
+  `KeycloakUserProfileAttributePermissions` VO (`view`/`edit` role lists → `adminCanEdit/View`,
+  `userCanEdit/View`; **closed-by-default** when absent, mirroring `KeycloakUserAccess`). Unit 60/60 +
+  PHPStan L6 clean. E2E `KeycloakUserProfileE2ETest` reads the **default declarative profile** from live
+  KC (built-ins present, email/names required, admin-edit perms + email-format validator parsed) — the
+  admin-only-edit (`edit:[admin]`, not `user`) discrimination is unit-proven only, as the default
+  profile ships no such built-in. README coverage table updated (`GET /users/profile` → ✅).
+- ✅ **Slice 5** — plugin: custom attributes rendered from the User Profile, **folded into the Identity
+  section** (decided: one native "Details" form like the KC console, not a separate card). New pure
+  `KeycloakUserAttributes` mapper (schema→Filament translation, unit-testable, holds no Livewire state)
+  owns: viewable/editable projection (built-ins excluded; **edit-implies-view** so an admin-editable attr
+  shows even when its `view` list omits `admin`), lossless value shaping, read display (option-label
+  resolved), and **widget selection driven by KC's `inputType` annotation** — textarea→Textarea,
+  select→Select, select-radiobuttons→Radio, multiselect(-checkboxes)→Select-multiple/CheckboxList,
+  html5-email/number/tel/url→typed TextInput, html5-date→DatePicker, multivalued→TagsInput; validators
+  (length/pattern/email) mapped to Filament rules. `KeycloakUserIdentity` renders read entries (pencil
+  hint-action on editable ones, gated on `access.manage`) + folds editable attrs into the one Edit modal;
+  write is the §3.1 lossless RMW (only schema-declared editable attrs overlaid). Lib gained
+  `KeycloakUserProfileAttribute.annotations` + `inputType()`/`options()`/`optionLabels()` (tolerant).
+  `KeycloakRealmApi` wired in the ServiceProvider. Lib unit 63/63; plugin unit 9/9 + PHPStan clean. E2E
+  `KeycloakUserProfileAttributesE2ETest` (test-realm seeds a declarative profile: `department` admin-edit,
+  `costCenter` admin-view-only): infolist shows both, edit persists department, costCenter preserved.
 
 Test entry points: lib `mise run test` / `mise run analyse`; plugin `mise run test`; full E2E `mise run e2e`
 (only e2e boots Keycloak). Keycloak console `admin`/`admin` @ `:9911`; seeded users password `changeit`.
@@ -392,9 +417,13 @@ failure propagates, reads unchanged.
    live enable toggle, both gated on `user.access.manage`, `InteractsWithKeycloakWrites` 401/403 notice;
    UX polish (reset-email → Credentials section, gray non-destructive actions, section headings). E2E:
    `KeycloakUserWriteActionsE2ETest` + `KeycloakIdentityGatingFgapE2ETest`. Unit + PHPStan clean.
-4. **← NEXT — Lib: `KeycloakRealmApi::getUserProfile`** (§5) — E2E parse of real profile config.
-5. **Plugin: attribute fields rendered from User Profile** (§5).
-6. **Impersonation** (§6) — blocked on §7.1; last.
+4. ✅ **DONE — Lib: `KeycloakRealmApi::getUserProfile`** (§5) — `KeycloakUserProfile` +
+   `KeycloakUserProfileAttribute(s)` + `KeycloakUserProfileAttributePermissions` (closed-by-default).
+   Unit 60/60 + PHPStan L6. E2E `KeycloakUserProfileE2ETest` parses the real default profile.
+5. ✅ **DONE — Plugin: attribute fields rendered from User Profile** (§5), folded into the Identity
+   "Details" form. `KeycloakUserAttributes` mapper (inputType→widget, edit-implies-view, lossless RMW) +
+   lib annotation helpers. E2E `KeycloakUserProfileAttributesE2ETest` green.
+6. **← NEXT — Impersonation** (§6) — blocked on §7.1; last.
 
 `HeloufirAdminKeycloakSession` (the prod adapter) is wired in the ServiceProvider and covered by manual/prod
 verification only — never by the test suite (arch check).

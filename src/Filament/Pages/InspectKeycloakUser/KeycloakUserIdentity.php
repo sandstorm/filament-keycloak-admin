@@ -7,6 +7,7 @@ namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
@@ -20,6 +21,8 @@ use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakWrites;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi\Dto\KeycloakUserProfileAttributes;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -28,16 +31,27 @@ use function in_array;
 use function view;
 
 /**
- * Identity section of the detail page — the key/value fields (username, email, name, email-verified)
- * plus a pending-TOTP note, and now the **write** surface: a live enable/disable toggle (like the stock
- * Keycloak user page) and an "Edit" action for the names + email-verified flag. Its own Livewire
- * component so the host page fetches nothing.
+ * Identity section of the detail page — the key/value fields (username, email, name, email-verified,
+ * plus the realm's custom User-Profile attributes) and a pending-TOTP note, and the **write** surface: a
+ * live enable/disable toggle (like the stock Keycloak user page) and an "Edit" action for the names,
+ * email-verified flag, and every admin-editable custom attribute. Its own Livewire component so the host
+ * page fetches nothing.
  *
- * Both write controls are gated on the caller-relative capability `user.access.manage` (plan §2.1): if
- * this admin may not manage the user, the toggle is disabled and Edit is hidden — the UI reflects
- * Keycloak's own answer up front. A write can still be denied by a mid-flight grant change, so every
- * write goes through {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as
- * a friendly notice (the scoped exception to plan §8; other failures still propagate).
+ * The custom attributes are **not** free-form key/value pairs: which attributes exist, their labels,
+ * widgets, validators, required-ness, and who may view/edit them all come from Keycloak's declarative
+ * User-Profile schema (`GET /users/profile`, plan §5), so the Identity form mirrors the Keycloak
+ * console's own user form — one "Details" surface, not a separate attributes card. The schema→field
+ * translation lives in {@see KeycloakUserAttributes}; this component owns only the identity chrome, the
+ * Edit action, and the write.
+ *
+ * Two authorities compose per control. The enable toggle and the Edit modal are gated on the
+ * caller-relative `user.access.manage` (plan §2.1): if this admin may not manage the user, the toggle is
+ * disabled and the pencil is disabled (not hidden — stays discoverable). Within the Edit modal, each
+ * custom attribute additionally honours its schema permission (`adminCanEdit`): a view-only attribute is
+ * shown read-only in the infolist and never appears as an editable field. A write can still be denied by
+ * a mid-flight grant change, so every write goes through
+ * {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as a friendly notice
+ * (the scoped exception to plan §8; other failures still propagate).
  */
 final class KeycloakUserIdentity extends Component implements HasActions, HasSchemas
 {
@@ -57,15 +71,29 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
 
     protected KeycloakUsersApi $usersApi;
 
+    protected KeycloakRealmApi $realmApi;
+
     /**
      * Per-request cache of the fetched user (private → never serialized by Livewire; re-resolved each
      * request, cleared on write and on the cross-tab signal so the next read is fresh).
      */
     private ?KeycloakUser $user = null;
 
-    public function boot(KeycloakUsersApi $usersApi): void
+    /**
+     * The realm's User-Profile attribute collection, fetched once per request (realm-wide schema,
+     * unchanged between the two reads a write performs).
+     */
+    private ?KeycloakUserProfileAttributes $profileAttributes = null;
+
+    /**
+     * Per-request cache of the schema→field mapper built from {@see $profileAttributes}.
+     */
+    private ?KeycloakUserAttributes $attributeMapper = null;
+
+    public function boot(KeycloakUsersApi $usersApi, KeycloakRealmApi $realmApi): void
     {
         $this->usersApi = $usersApi;
+        $this->realmApi = $realmApi;
     }
 
     public function mount(string $userId): void
@@ -76,13 +104,15 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
 
     /**
      * A write in a sibling table (e.g. a credential removal) — or one of this component's own writes —
-     * can change identity state, so re-read on the shared cross-tab signal: drop the cache and resync the
+     * can change identity state, so re-read on the shared cross-tab signal: drop the caches and resync the
      * toggle to the server's truth, and the infolist rebuilds from the fresh fetch (plan §7.2).
      */
     #[On('keycloak-user-changed')]
     public function refresh(): void
     {
         $this->user = null;
+        $this->profileAttributes = null;
+        $this->attributeMapper = null;
         $this->syncEnabledToggle();
     }
 
@@ -97,6 +127,7 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
                 ->hintAction($this->editIdentityAction()),
             IconEntry::make('emailVerified')->label('Email verified')->boolean()->state($user->emailVerified)
                 ->hintAction($this->editIdentityAction()),
+            ...$this->attributeEntries($user),
             TextEntry::make('totpPending')
                 ->hiddenLabel()
                 ->state('TOTP setup pending — the user must configure an authenticator at next login.')
@@ -157,11 +188,12 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
     }
 
     /**
-     * Edit the free-text identity fields + email-verified flag in a modal. Rendered as a small pencil
-     * hint-action beside each field it changes (name, email-verified). When the caller may not manage
-     * this user the pencil is *disabled* (not hidden) with a tooltip explaining why — so the affordance
-     * stays discoverable and the missing permission is explicit. The write is a lossless
-     * read-modify-write through the DTO.
+     * Edit the built-in identity fields (names + email-verified) **and** the admin-editable custom
+     * attributes in one modal, mirroring the Keycloak console's single user form. Rendered as a small
+     * pencil hint-action beside each field it changes. When the caller may not manage this user the pencil
+     * is *disabled* (not hidden) with a tooltip explaining why — so the affordance stays discoverable and
+     * the missing permission is explicit. The write is a lossless read-modify-write through the DTO:
+     * unlisted/managed attributes are never touched.
      */
     public function editIdentityAction(): Action
     {
@@ -178,20 +210,26 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
                 'firstName' => $this->loadUser()->firstName,
                 'lastName' => $this->loadUser()->lastName,
                 'emailVerified' => $this->loadUser()->emailVerified,
+                ...$this->attributeMapper()->formState($this->loadUser()),
             ])
             ->schema([
                 TextInput::make('firstName')->label('First name'),
                 TextInput::make('lastName')->label('Last name'),
                 Toggle::make('emailVerified')->label('Email verified'),
+                ...$this->attributeFields(),
             ])
             ->action(function (array $data): void {
                 $succeeded = $this->runKeycloakWrite(function () use ($data): void {
-                    $user = $this->usersApi->getById(new KeycloakUserId($this->userId));
-                    $this->usersApi->update(
-                        $user->withFirstName($data['firstName'])
-                            ->withLastName($data['lastName'])
-                            ->withEmailVerified((bool) $data['emailVerified']),
-                    );
+                    $user = $this->usersApi->getById(new KeycloakUserId($this->userId))
+                        ->withFirstName($data['firstName'])
+                        ->withLastName($data['lastName'])
+                        ->withEmailVerified((bool) $data['emailVerified']);
+
+                    foreach ($this->attributeMapper()->editable() as $attribute) {
+                        $user = $user->withAttribute($attribute->name, $this->attributeMapper()->values($attribute, $data[$attribute->name] ?? null));
+                    }
+
+                    $this->usersApi->update($user);
                 });
 
                 $this->user = null;
@@ -203,9 +241,60 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
             });
     }
 
+    /**
+     * Read entries for the realm's admin-viewable custom attributes, in schema order. An admin-editable
+     * attribute carries the same pencil hint-action as the built-in fields (it is edited in the same
+     * modal); a view-only attribute is shown without one.
+     *
+     * @return list<TextEntry>
+     */
+    private function attributeEntries(KeycloakUser $user): array
+    {
+        $entries = [];
+        foreach ($this->attributeMapper()->viewable() as $attribute) {
+            $entry = TextEntry::make('attr_' . $attribute->name)
+                ->label($this->attributeMapper()->label($attribute))
+                ->state($this->attributeMapper()->displayValue($attribute, $user))
+                ->placeholder('—');
+
+            if ($attribute->permissions->adminCanEdit()) {
+                $entry->hintAction($this->editIdentityAction());
+            }
+
+            $entries[] = $entry;
+        }
+
+        return $entries;
+    }
+
+    /**
+     * The editable custom attributes as Filament form fields for the Edit modal.
+     *
+     * @return list<Field>
+     */
+    private function attributeFields(): array
+    {
+        $fields = [];
+        foreach ($this->attributeMapper()->editable() as $attribute) {
+            $fields[] = $this->attributeMapper()->buildField($attribute);
+        }
+
+        return $fields;
+    }
+
+    private function attributeMapper(): KeycloakUserAttributes
+    {
+        return $this->attributeMapper ??= new KeycloakUserAttributes($this->loadProfileAttributes());
+    }
+
     private function loadUser(): KeycloakUser
     {
         return $this->user ??= $this->usersApi->getById(new KeycloakUserId($this->userId));
+    }
+
+    private function loadProfileAttributes(): KeycloakUserProfileAttributes
+    {
+        return $this->profileAttributes ??= $this->realmApi->getUserProfile()->attributes;
     }
 
     public function render(): View

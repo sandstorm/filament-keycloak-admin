@@ -29,6 +29,8 @@ use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\KeycloakEventsApiImplementation;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi\KeycloakGroupsApiImplementation;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi\KeycloakRealmApiImplementation;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi\KeycloakSessionsApiImplementation;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
@@ -99,6 +101,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         $this->app->singleton(KeycloakCredentialsApi::class, fn (Application $app): KeycloakCredentialsApi => new KeycloakCredentialsApiImplementation($app->make(KeycloakTransport::class)));
         $this->app->singleton(KeycloakSessionsApi::class, fn (Application $app): KeycloakSessionsApi => new KeycloakSessionsApiImplementation($app->make(KeycloakTransport::class)));
         $this->app->singleton(KeycloakEventsApi::class, fn (Application $app): KeycloakEventsApi => new KeycloakEventsApiImplementation($app->make(KeycloakTransport::class)));
+        $this->app->singleton(KeycloakRealmApi::class, fn (Application $app): KeycloakRealmApi => new KeycloakRealmApiImplementation($app->make(KeycloakTransport::class)));
     }
 
     public function packageBooted(): void
