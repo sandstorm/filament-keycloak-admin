@@ -33,6 +33,12 @@ use function json_decode;
  * after the control rendered) surfaces a friendly notice, not the framework error page, and does not
  * mutate the user.
  *
+ * sarah carries no manage-level admin role: only the base `query-users`/`query-groups`
+ * realm-management roles, because admin endpoints outside the FGAP evaluation (e.g.
+ * `GET users/profile`, which the identity infolist reads for the custom attributes) require the
+ * caller to hold *some* realm-management role. Neither role grants view or manage on any user, so
+ * everything sarah may actually do still comes from the FGAP policies alone.
+ *
  * sarah's identity is fed through the same {@see InMemoryAdminKeycloakSession} fake the unit/SSO tests
  * use (seeded with a real direct-grant token), so heloufir is never involved.
  *

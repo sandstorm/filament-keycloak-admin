@@ -235,6 +235,9 @@
             "credentials": [
                 {"type": "password", "value": "changeit", "temporary": false}
             ],
+            "clientRoles": {
+                "realm-management": ["query-users", "query-groups"]
+            },
             "groups": ["/staff"]
         },
         {
