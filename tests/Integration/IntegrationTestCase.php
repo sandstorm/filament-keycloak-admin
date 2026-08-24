@@ -58,7 +58,7 @@ abstract class IntegrationTestCase extends TestCase
     {
         $app['config']->set('filament-keycloak-admin', [
             'connection' => [
-                'base_url' => getenv('KEYCLOAK_E2E_BASE_URL') ?: null,
+                'backchannel_url' => getenv('KEYCLOAK_E2E_BASE_URL') ?: null,
                 'realm' => self::env('KEYCLOAK_E2E_REALM', 'test-realm'),
                 'client_id' => self::env('KEYCLOAK_E2E_CLIENT_ID', 'admin-api'),
                 'client_secret' => self::env('KEYCLOAK_E2E_CLIENT_SECRET', 'e2e-secret'),

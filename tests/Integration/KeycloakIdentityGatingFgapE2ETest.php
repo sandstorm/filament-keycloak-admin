@@ -54,7 +54,7 @@ final class KeycloakIdentityGatingFgapE2ETest extends IntegrationTestCase
 
         $app['config']->set('filament-keycloak-admin', [
             'connection' => [
-                'base_url' => $baseUrl,
+                'backchannel_url' => $baseUrl,
                 'realm' => self::FGAP_REALM,
                 // In sso mode the client_id/secret are unused by the transport (the bearer comes from the
                 // admin's session), but the settings object still requires them.

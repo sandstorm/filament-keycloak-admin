@@ -1,15 +1,22 @@
-# User write actions + impersonation — concept
+# User write actions — concept
 
 **Date:** 2026-08-19 · Extends the initial plan (`2026-08-12-keycloak-filament-extension-initial-plan.md`)
 and the client-lib concept (`keycloak-admin-api/docs/standalone-keycloak-api-package.md`).
 
-Adds **write** capability to the today-read-only user detail page, and **impersonation**. every write must honour the
-**individual admin's** Keycloak permissions (FGAP), which forces the **`sso` act-as-user** auth mode — sketched in both
-prior docs.
+Adds **write** capability to the today-read-only user detail page. Every write must honour the **individual
+admin's** Keycloak permissions (FGAP), which forces the **`sso` act-as-user** auth mode — sketched in both prior
+docs.
+
+> **Impersonation was in scope and has been dropped** (2026-08-24). Keycloak's `POST .../impersonation`
+> backchannel-logs-out the caller's own session when caller and target share a realm — which ours do — so under
+> `sso` it broke the panel. Investigation of the alternatives (magic-link extension, token exchange, cookie
+> stash, per-client override) is in git history. It also turned out the portal is not a Keycloak relying party,
+> so no Keycloak mechanism could deliver *"bekijk als"* anyway: that belongs in the portal's own session layer,
+> tracked separately.
 
 ---
 
-## Status / where to resume (updated 2026-08-19)
+## Status / where to resume (updated 2026-08-24)
 
 - ✅ **Slice 1** — `sso` act-as-user wired: `FilamentSsoTokenProvider` + `AdminKeycloakSession` seam
   (heloufir adapter in prod, in-memory fake in tests). Proven E2E over both realms.
@@ -65,7 +72,16 @@ prior docs.
   `KeycloakRealmApi` wired in the ServiceProvider. Lib unit 63/63; plugin unit 9/9 + PHPStan clean. E2E
   `KeycloakUserProfileAttributesE2ETest` (test-realm seeds a declarative profile: `department` admin-edit,
   `costCenter` admin-view-only): infolist shows both, edit persists department, costCenter preserved.
-
+- ✅ **Slice 6a** — the connection settings split into Keycloak's three hostname roles
+  (https://www.keycloak.org/server/hostname): `backchannel_url` (required — this app's own Admin REST
+  calls, previously the sole `base_url`), `frontend_url` and `administration_url` (optional, falling back
+  backchannel ← frontend ← administration). Every URL handed to a browser comes from the frontend URL, and
+  `resolvedUrl()` now resolves `${authBaseUrl}` and `${authAdminUrl}` separately. Same slice:
+  `browserLoginable()`/`resolvedUrl()` fall back to a redirect URI's **origin** when a client sets neither
+  rootUrl nor baseUrl (common — those two are only there for the console's Home URL link), so such clients
+  stop silently vanishing from the picker. Lib unit 72/72 + PHPStan L6; plugin unit 14/14 + PHPStan clean.
+  Also removed a `TEMPORARY DEBUG` block in `KeycloakTransport` that logged bearer claims through
+  `\Illuminate\Log\log()` — it coupled the framework-agnostic lib to Laravel and broke its whole unit suite.
 Test entry points: lib `mise run test` / `mise run analyse`; plugin `mise run test`; full E2E `mise run e2e`
 (only e2e boots Keycloak). Keycloak console `admin`/`admin` @ `:9911`; seeded users password `changeit`.
 
@@ -82,7 +98,6 @@ Per user, on `InspectKeycloakUser` (the detail page):
 | 3 | Toggle email-verified                 | `PUT /users/{id}` (`emailVerified`)                               | user write       |
 | 4 | Edit custom attributes *(maybe — §5)* | `PUT /users/{id}` (`attributes`)                                  | user write       |
 | 5 | Reset password                        | email link **(exists)** + direct `PUT /users/{id}/reset-password` | credential write |
-| 6 | Impersonate into an application       | `POST /users/{id}/impersonation` **or** token-exchange (§6)       | session          |
 
 Features 1–4 are the **same endpoint** — one read-modify-write `PUT /users/{id}` (§4.1). Group them into one
 "Edit identity" surface, not four separate calls.
@@ -209,15 +224,6 @@ unmodelled fields, and a 403 surfaces as `UnexpectedKeycloakResponseException` (
 or sets a password. No `resetPassword()` lib method, no password field in the UI. (Reverses the earlier
 break-glass idea.)
 
-### 3.3 Impersonation — a browser flow, **not** a server API call
-
-**Goal:** admin clicks a button → admin's *browser* is logged into the **target application as that user**, no
-password. This is fundamentally a browser-redirect flow; a server-side Admin-API call cannot deliver it (§6),
-so there is **no `impersonate()` returning data to the server**. Instead the plugin ships a **redirect
-endpoint** that drives the admin's browser through Keycloak's impersonation and on to the target app's OIDC
-login. Lib involvement is minimal (possibly none). Full mechanism + requirements in §6; **build last, pending
-the §7.1 target-app decision.**
-
 ### 3.4 Tests
 
 Unit (done): `KeycloakUser` `with*()` edits + `toRepresentation()` losslessness (the real logic), and
@@ -279,7 +285,6 @@ Shipped shape (differs from the original sketch — recorded here as the source 
   section as a gray header action (it is a credential operation, not a page-level one), `requiresConfirmation`.
 - **De-emphasised styling.** Non-destructive actions (edit, reset-email, add-to-group) are **gray**; red is
   reserved for real removes (remove-from-group, remove-credential). Every embedded section has a heading.
-- **Impersonate** — not built; §6, blocked on §7.1.
 
 Write guard (`InteractsWithKeycloakWrites` trait, §7.2 taxonomy): a write that returns
 `UnexpectedKeycloakResponseException` with `statusCode` 401/403 → friendly "You do not have permission to make
@@ -307,101 +312,25 @@ admin console renders its user form straight from it; the plugin does the same.
 
 ---
 
-## 6. Impersonation — how it actually works
-
-Goal restated: **click → the admin's browser is logged into the target application as the user, no password.**
-The impersonated identity must live in the **admin's browser's** Keycloak SSO session — which is why no
-server-side Admin-API call alone achieves it.
-
-### 6.1 How Keycloak's own Impersonate button works (observed)
-
-**Observed behaviour:** clicking Impersonate opens a **new window** at the **Account console**, logged in as the
-*target* user, while the original **admin console stays logged in as the admin**. Two sessions coexist.
-
-**Mechanism (to confirm empirically against 26.5.3 in the E2E KC — earlier draft overstated this):** the admin
-console is served from Keycloak's own origin (`/admin/`) and does
-`POST /admin/realms/{realm}/users/{id}/impersonate` with the admin's bearer. Same-origin, so the response's
-`Set-Cookie` (`KEYCLOAK_IDENTITY`/`KEYCLOAK_SESSION` for the **target** user) lands in the browser — a
-**cookie-plant**. Crucially it is *non-destructive to the admin console*: that SPA authenticates with its own
-in-memory bearer tokens (`security-admin-console` client), not the SSO cookie, so overwriting the cookie doesn't
-log it out. The new window then does a normal OIDC handshake, reads the new cookie, and resolves to the target
-user. Hence: token-based admin session (untouched) **and** cookie-based target session (new window) side by side.
-
-**What this means for us — promising.** Our Filament panel session is a *Laravel* cookie, independent of the KC
-SSO cookie, so it survives an impersonation cookie-plant exactly like the admin console does. So "Impersonate"
-could be: plant the target SSO cookie in the admin's browser, then open the **target app** in a new window →
-its OIDC login resolves to the target user, admin panel untouched. The one hard part is **getting the
-`Set-Cookie` into the browser**: our panel is a *different origin* from Keycloak, so a server-side call plants
-the cookie on the server (useless) and a cross-origin browser call hits third-party-cookie/CORS limits. Solving
-that (a reverse-proxy path that serves Keycloak under the panel's domain, so the impersonate step is
-first-party) is the crux — a deployment concern, not lib code.
-
-### 6.2 Do it exactly like the console — the recommended path
-
-We *can* reproduce 6.1. The only thing that made it look un-portable is the **origin boundary**, and that is a
-deployment choice, not a protocol limit: the third-party-cookie block applies to cross-*site* embedded/XHR
-contexts, **not** when Keycloak is served **same-site with the panel**. Front both under one parent domain —
-reverse-proxy KC at `panel.example.com/auth`, or share `*.example.com` — and a browser-side call to KC's
-impersonate endpoint is **first-party**; its `Set-Cookie` plants in the admin's browser just like the console's.
-
-And we hold an advantage the console has: **we already have the admin's bearer** — that is exactly what
-`FilamentSsoTokenProvider` (§2) produces. So the feature is:
-
-1. **Impersonate** action → a small front-end (Alpine/JS) `fetch` to the same-site impersonate endpoint with the
-   admin's bearer + `credentials: 'include'` (mirrors what the console does).
-2. On success, `window.open()` the **target application** (or the account console) in a new tab. Its OIDC login
-   reads the freshly-planted cookie → target user.
-3. The admin's **panel** session is a separate Laravel cookie and is untouched — same "stay admin here, be the
-   user there" split the console shows.
-
-No lib `impersonate()` data call (§3.3 removed it); the bearer + a route are all that's needed.
-
-**`impersonate` is public API.** `POST /admin/realms/{realm}/users/{id}/impersonate` is a documented, stable
-Admin REST endpoint (`UserResource`) — requires the `impersonation` permission, returns `{sameRealm, redirect}`
-plus the target-user `Set-Cookie`. Not console-internal; the console is just its best-known caller. (Confirm the
-exact 26.5.3 response/cookie shape empirically against the docker KC.)
-
-**Origin nuance — "same parent domain" is not enough on its own:**
-- **Subdomain** (`panel.example.com` → `auth.example.com`): same-*site* (cookies fine with `SameSite=Lax/None`)
-  but still cross-*origin*, so the browser `fetch` needs **CORS** — add the panel origin to the OIDC client's
-  **Web Origins** in Keycloak.
-- **Same origin via path-proxy** (`panel.example.com/auth` → KC): no CORS, cookie fully first-party. Cleanest;
-  prefer this if the reverse proxy allows.
-
-### 6.3 Token exchange — fallback only
-
-If sharing a site with Keycloak is genuinely impossible, `grant_type=token-exchange` with
-`requested_subject=<targetUserId>` + `audience=<target-client>` mints tokens acting as the target user, scoped
-to an app — but it yields *tokens, not a browser cookie*, so it only helps for an app **we control** that has a
-token-accepting login seam. Heavier and narrower; avoid unless 6.2 is ruled out.
-
-### 6.4 Recommendation
-
-**Go 6.2 — replicate the console.** The decision reduces to one deployment question (now §7.1): **is Keycloak
-same-site with the panel, or can we reverse-proxy it so?** Almost always yes. Prototype the browser-side
-impersonate `fetch` + `window.open` against the dockerized KC (proxied same-site) and confirm the 26.5.3
-cookie/redirect behaviour empirically before building the action.
-
----
-
 ## 7. Open questions
 
 **Resolved:** set-password → **email-link only** (§3.2); attributes → **User Profile-driven, no free-form**
 (§5); "see what I can edit" → **`user.access` capability map** (§2.1); heloufir → **prod adapter behind a seam,
-faked in tests** (§2.1); impersonation lib call → **dropped** (§3.3/§6); **write failure taxonomy** →
+faked in tests** (§2.1); **write failure taxonomy** →
 **decided + built** (`InteractsWithKeycloakWrites`, §4): a write's 401/403 → friendly notice, every other
 failure propagates, reads unchanged.
 
 **Still open:**
 
-1. **Impersonation origin topology (§6.4)** — is Keycloak same-site with the panel, or can we reverse-proxy it
-   under the panel's domain? If yes → replicate the console (6.2), the recommended path. Also: which target
-   app(s) does the new window open into? Blocks all impersonation work. **Top question.**
-2. **`sso` deployment prereq** — confirm heloufir's OIDC client issues tokens carrying `realm-management`
+1. **`sso` deployment prereq** — confirm heloufir's OIDC client issues tokens carrying `realm-management`
    roles + audience, else FGAP writes 403 with no fallback (initial-plan §6/§15).
-3. **Interim under `service_account`** — ship writes before `sso` lands (coarse identity, no per-admin audit),
+2. **Interim under `service_account`** — ship writes before `sso` lands (coarse identity, no per-admin audit),
    or hard-block writes until `sso`? (Note: writes are already live in both modes; under `service_account`
    the `access` map reflects the shared identity's roles, so gating still works but is not per-admin.)
+3. **Is `adminPermissionsEnabled` (FGAP v2) on in the production `Broodfonds` realm**, or only in the test
+   realm? If off, the `access` map reflects coarse `realm-management` roles rather than per-admin FGAP, so §2's
+   per-admin guarantee does not hold in production yet. Note **members and staff share the realm `Broodfonds`**,
+   so FGAP v2 is what separates those populations — keep it.
 
 ## 8. Sequencing — every slice TDD (E2E-focused, against real KC in the API layer)
 
@@ -423,7 +352,16 @@ failure propagates, reads unchanged.
 5. ✅ **DONE — Plugin: attribute fields rendered from User Profile** (§5), folded into the Identity
    "Details" form. `KeycloakUserAttributes` mapper (inputType→widget, edit-implies-view, lossless RMW) +
    lib annotation helpers. E2E `KeycloakUserProfileAttributesE2ETest` green.
-6. **← NEXT — Impersonation** (§6) — blocked on §7.1; last.
+6. ✅ **DONE — Lib: `KeycloakClientsApi::list()`** + `KeycloakClient`/`KeycloakClients` DTOs
+   (`browserLoginable()` filter, `resolvedUrl()`); unit + PHPStan L6, E2E `KeycloakClientsE2ETest` green
+   (needed `view-clients`/`query-clients` on the seed service account).
+7. ✅ **DONE — Connection URLs split into Keycloak's three hostname roles**: `backchannel_url` (required) for
+   the Admin-REST transport + token endpoint, `frontend_url` / `administration_url` for anything handed to a
+   browser, falling back administration → frontend → backchannel. `resolvedUrl()` resolves `${authBaseUrl}`
+   and `${authAdminUrl}` separately, and falls back to a redirect URI's **origin** when a client sets neither
+   rootUrl nor baseUrl. Lib unit 72/72 + PHPStan L6; plugin unit 14/14 + PHPStan clean.
 
 `HeloufirAdminKeycloakSession` (the prod adapter) is wired in the ServiceProvider and covered by manual/prod
 verification only — never by the test suite (arch check).
+
+---

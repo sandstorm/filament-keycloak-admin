@@ -5,9 +5,9 @@ truth — there is no local user mirror. This package is **UI only**; every HTTP
 library [`sandstorm/keycloak-admin-api`](https://github.com/sandstorm/keycloak-admin-api).
 
 - **Target:** Filament v4, PHP ^8.3, Keycloak 26.5.3+.
-- **Features:** searchable user list; per-user detail with Identity, Groups (add/remove), Security/2FA (remove second
-  factors), Active sessions (log out all), User events, and Admin history; a
-  "Send password-reset email" action.
+- **Features:** searchable user list; per-user detail with Identity (edit + enable toggle + User-Profile
+  attributes), Groups (add/remove), Security/2FA (remove second factors), Active sessions (log out all),
+  User events, and Admin history; and a "Send password-reset email" action.
 
 The whole package is work in progress, and is extended as needed.
 
@@ -36,10 +36,12 @@ the authoritative config. Provide `config/filament-keycloak-admin.php` in your a
 ```php
 return [
     'connection' => [
-        'base_url'      => 'https://keycloak.example/',
-        'realm'         => 'YourRealm',
-        'client_id'     => 'admin-panel-serviceaccount',
-        'client_secret' => '…',
+        'backchannel_url'    => 'http://keycloak.internal:8080/', // required
+        'frontend_url'       => 'https://login.example/',         // optional, defaults to backchannel_url
+        'administration_url' => null,                             // optional, defaults to frontend_url
+        'realm'              => 'YourRealm',
+        'client_id'          => 'admin-panel-serviceaccount',
+        'client_secret'      => '…',
     ],
     'auth_mode' => 'service_account', // 'service_account' | 'sso' (act-as-user; see Auth modes below)
     'http' => [
@@ -55,6 +57,22 @@ return [
 ```
 
 The package publishes only a structure-only stub (keys + docs, no values, no `env()`).
+
+### Connection URLs
+
+The three URLs follow [Keycloak's hostname nomenclature](https://www.keycloak.org/server/hostname), because a
+Keycloak instance can be reachable under a different address per channel:
+
+| Key | Keycloak option | Used for |
+|---|---|---|
+| `backchannel_url` | `--hostname-backchannel-dynamic` | This application's *own* calls: the Admin REST API and the service-account token endpoint. Frequently an internal/cluster address. |
+| `frontend_url` | `--hostname` | Anything the admin's **browser** is sent to. |
+| `administration_url` | `--hostname-admin` | The administration console's own base URL. |
+
+Only `backchannel_url` is required; `administration_url` falls back to `frontend_url`, which falls back to
+`backchannel_url` — the right behaviour for a single-hostname deployment.
+
+Only the backchannel URL is used today; the other two exist so a browser is never handed an internal address.
 
 ### Auth modes
 
