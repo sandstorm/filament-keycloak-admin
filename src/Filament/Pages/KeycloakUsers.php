@@ -6,7 +6,6 @@ namespace Sandstorm\FilamentKeycloakAdmin\Filament\Pages;
 
 use BackedEnum;
 use Filament\Pages\Page;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -14,8 +13,10 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
+use UnitEnum;
 
 use function array_map;
 use function assert;
@@ -33,8 +34,6 @@ final class KeycloakUsers extends Page implements HasTable
 {
     use InteractsWithTable;
 
-    protected static string | BackedEnum | null $navigationIcon = Heroicon::OutlinedUsers;
-
     protected string $view = 'filament-keycloak-admin::filament.pages.keycloak-users';
 
     protected KeycloakUsersApi $usersApi;
@@ -44,14 +43,47 @@ final class KeycloakUsers extends Page implements HasTable
         $this->usersApi = $usersApi;
     }
 
+    // How this page presents itself in the panel is owned by the plugin instance, so a consuming app
+    // configures it once on `->plugin(...)` instead of subclassing the page.
+
+    public static function canAccess(): bool
+    {
+        return FilamentKeycloakAdminPlugin::get()->isAuthorized();
+    }
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return FilamentKeycloakAdminPlugin::get()->shouldRegisterNavigation();
+    }
+
     public static function getNavigationLabel(): string
     {
-        return 'Keycloak Users';
+        return FilamentKeycloakAdminPlugin::get()->getNavigationLabel();
+    }
+
+    public static function getNavigationGroup(): string | UnitEnum | null
+    {
+        return FilamentKeycloakAdminPlugin::get()->getNavigationGroup();
+    }
+
+    public static function getNavigationParentItem(): ?string
+    {
+        return FilamentKeycloakAdminPlugin::get()->getNavigationParentItem();
+    }
+
+    public static function getNavigationIcon(): string | BackedEnum | null
+    {
+        return FilamentKeycloakAdminPlugin::get()->getNavigationIcon();
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return FilamentKeycloakAdminPlugin::get()->getNavigationSort();
     }
 
     public function getTitle(): string
     {
-        return 'Keycloak Users';
+        return FilamentKeycloakAdminPlugin::get()->getNavigationLabel();
     }
 
     public function table(Table $table): Table

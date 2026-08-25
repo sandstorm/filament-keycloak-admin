@@ -1,14 +1,13 @@
 # Filament Keycloak Admin
 
-
 A Filament v4 admin panel to manage Keycloak users through the Keycloak Admin REST API. Keycloak is the source of
 truth — there is no local user mirror. This package is **UI only**; every HTTP call goes through the standalone client
 library [`sandstorm/keycloak-admin-api`](https://github.com/sandstorm/keycloak-admin-api).
 
 - **Target:** Filament v4, PHP ^8.3, Keycloak 26.5.3+.
-- **Features:** searchable user list; per-user detail with Identity (edit + enable toggle + User-Profile
-  attributes), Groups (add/remove), Security/2FA (remove second factors), Active sessions (log out all),
-  User events, and Admin history; and a "Send password-reset email" action.
+- **Features:** searchable user list; per-user detail with Identity (edit + enable toggle + User-Profile attributes),
+  Groups (add/remove), Security/2FA (remove second factors), Active sessions (log out all), User events, and Admin
+  history; and a "Send password-reset email" action.
 
 The whole package is work in progress, and is extended as needed.
 
@@ -29,9 +28,40 @@ use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 $panel->plugin(FilamentKeycloakAdminPlugin::make());
 ```
 
+## Panel integration
+
+Where the module shows up, and who sees it, is configured on the plugin instance:
+
+```php
+use Filament\Support\Icons\Heroicon;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
+
+$panel->plugin(
+    FilamentKeycloakAdminPlugin::make()
+        ->authorize(fn (): bool => auth()->user()?->can('manage-keycloak-users') ?? false)
+        ->navigationLabel('Login accounts')
+        ->navigationGroup('User management')
+        ->navigationIcon(Heroicon::OutlinedKey)
+        ->navigationSort(30),
+);
+```
+
+| Method                                              | Default                   | Effect                                                                                                                                                         |
+|-----------------------------------------------------|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `authorize(Closure\|bool)`                          | `true` (everyone)         | Who may use the module. Gates `canAccess()` on **both** the list and the detail page, so an unauthorized admin gets a 403 on the URL as well as no menu entry. |
+| `navigationLabel(Closure\|string\|null)`            | `'Keycloak Users'`        | Name in the main menu; also the list page's own title.                                                                                                         |
+| `navigationGroup(Closure\|string\|UnitEnum\|null)`  | `null` (top level)        | Parent menu category to list the module under.                                                                                                                 |
+| `navigationParentItem(Closure\|string\|null)`       | `null`                    | Nests the module under another navigation *item* (by its label) instead of under a group.                                                                      |
+| `navigationIcon(Closure\|string\|BackedEnum\|null)` | `Heroicon::OutlinedUsers` | Menu icon. Pass `null` for no icon. **Ignored while a navigation group is set** — see below.                                                                   |
+| `navigationSort(Closure\|int\|null)`                | `null`                    | Position within its menu group.                                                                                                                                |
+| `registerNavigation(Closure\|bool)`                 | `true`                    | Whether the module appears in the menu at all. `false` keeps it reachable by URL (still subject to `authorize()`) — for panels that link to it themselves.     |
+
+Every setter also accepts a closure, evaluated on each access, so the value may depend on the authenticated admin or on
+runtime configuration:
+
 ## Configuration
 
-The plugin reads resolved `config('filament-keycloak-admin.*')` and never calls `env()` itself — the consuming app owns
+The plugin reads resolved `config('filament-keycloak-admin.*')`, the consuming app owns
 the authoritative config. Provide `config/filament-keycloak-admin.php` in your app:
 
 ```php
@@ -61,33 +91,29 @@ The package publishes only a structure-only stub (keys + docs, no values, no `en
 
 ### Connection URLs
 
-The three URLs follow [Keycloak's hostname nomenclature](https://www.keycloak.org/server/hostname), because a
-Keycloak instance can be reachable under a different address per channel:
+The three URLs follow [Keycloak's hostname nomenclature](https://www.keycloak.org/server/hostname), because a Keycloak
+instance can be reachable under a different address per channel:
 
-| Key | Keycloak option | Used for |
-|---|---|---|
-| `backchannel_url` | `--hostname-backchannel-dynamic` | This application's *own* calls: the Admin REST API and the service-account token endpoint. Frequently an internal/cluster address. |
-| `frontend_url` | `--hostname` | Anything the admin's **browser** is sent to. |
-| `administration_url` | `--hostname-admin` | The administration console's own base URL. |
+| Key                  | Keycloak option                  | Used for                                                                                                                           |
+|----------------------|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `backchannel_url`    | `--hostname-backchannel-dynamic` | This application's *own* calls: the Admin REST API and the service-account token endpoint. Frequently an internal/cluster address. |
+| `frontend_url`       | `--hostname`                     | Anything the admin's **browser** is sent to.                                                                                       |
+| `administration_url` | `--hostname-admin`               | The administration console's own base URL.                                                                                         |
 
 Only `backchannel_url` is required; `administration_url` falls back to `frontend_url`, which falls back to
-`backchannel_url` — the right behaviour for a single-hostname deployment.
+`backchannel_url`.
 
 Only the backchannel URL is used today; the other two exist so a browser is never handed an internal address.
 
 ### Auth modes
 
-- **`service_account`** (wired today) — a `client_credentials` grant on a confidential client with the required
+- **`service_account`** — a `client_credentials` grant on a confidential client with the required
   `realm-management` roles: `view-users`, `manage-users`, `query-users`, `query-groups` (plus
-  `view-events` for the event tabs). One shared identity.
+  `view-events` for the event tabs). This is one shared identity for all actions.
 - **`sso`** (act-as-user) — the Admin-API bearer is the **logged-in admin's own** Keycloak token, so Keycloak evaluates
   that person's fine-grained permissions and attributes admin events to them.
-  `FilamentSsoTokenProvider` reads the token through an `AdminKeycloakSession` seam: bind your own, or install
-  `heloufir/filament-keycloak-sso` for the bundled `HeloufirAdminKeycloakSession` adapter. Selecting `sso` with neither
-  present fails loudly.
-
-There is **no fallback**: a misconfigured or underprivileged mode fails loudly. Every read failure (including 401/403)
-propagates to the framework error page.
+  `FilamentSsoTokenProvider` reads the token through `AdminKeycloakSession`. We recommend you to install
+  `heloufir/filament-keycloak-sso` for the bundled `HeloufirAdminKeycloakSession` adapter.
 
 ## Testing
 

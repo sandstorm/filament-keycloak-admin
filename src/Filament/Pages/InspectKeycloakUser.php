@@ -15,6 +15,7 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -50,6 +51,15 @@ final class InspectKeycloakUser extends Page
     public function boot(KeycloakUsersApi $usersApi): void
     {
         $this->usersApi = $usersApi;
+    }
+
+    /**
+     * The same gate as the list page — the detail page has its own route, so it must be authorized in
+     * its own right and not merely be unreachable through a hidden menu entry.
+     */
+    public static function canAccess(): bool
+    {
+        return FilamentKeycloakAdminPlugin::get()->isAuthorized();
     }
 
     public function mount(string $userId): void
