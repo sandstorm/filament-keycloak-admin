@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures;
 
-use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Filament\Panel;
 use Filament\PanelProvider;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 
 /**
  * A minimal default Filament panel with the plugin registered — the host the E2E suite drives its

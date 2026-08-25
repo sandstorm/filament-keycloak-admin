@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Feature;
 
+use Filament\Panel;
+use PHPUnit\Framework\Attributes\Test;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
-use Filament\Panel;
-use PHPUnit\Framework\Attributes\Test;
 
 final class KeycloakUsersPageTest extends TestCase
 {

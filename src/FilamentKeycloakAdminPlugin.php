@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin;
 
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 use Filament\Contracts\Plugin;
 use Filament\Panel;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 
 /**
  * Registers the Keycloak user-management pages on a Filament panel: the {@see KeycloakUsers} list and
@@ -28,13 +28,11 @@ final class FilamentKeycloakAdminPlugin implements Plugin
         ]);
     }
 
-    public function boot(Panel $panel): void
-    {
-    }
+    public function boot(Panel $panel): void {}
 
     public static function make(): static
     {
-        return app(static::class);
+        return app(self::class);
     }
 
     public static function get(): static

@@ -6,23 +6,19 @@ namespace Sandstorm\FilamentKeycloakAdmin\Tests;
 
 use BladeUI\Heroicons\BladeHeroiconsServiceProvider;
 use BladeUI\Icons\BladeIconsServiceProvider;
-use Illuminate\Config\Repository;
-use Orchestra\Workbench\WorkbenchServiceProvider;
-use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
 use Filament\Forms\FormsServiceProvider;
 use Filament\Infolists\InfolistsServiceProvider;
-use Filament\Notifications\NotificationsServiceProvider;
 use Filament\Schemas\SchemasServiceProvider;
 use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
-use Filament\Widgets\WidgetsServiceProvider;
+use Illuminate\Config\Repository;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
-use Workbench\App\Providers\TelescopeServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 
 /**
  * Boots Laravel via Testbench with the Filament stack and this plugin's provider registered — a

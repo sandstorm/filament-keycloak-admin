@@ -17,7 +17,7 @@ final class InMemoryAdminKeycloakSession implements AdminKeycloakSession
     public int $refreshCallCount = 0;
 
     /**
-     * @param  AdminKeycloakTokens|null  $tokens         the currently stored tokens (null = no session)
+     * @param  AdminKeycloakTokens|null  $tokens  the currently stored tokens (null = no session)
      * @param  AdminKeycloakTokens|null  $refreshResult  what refresh() returns/persists (null = refresh fails)
      */
     public function __construct(
