@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandstorm\FilamentKeycloakAdmin;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\HttpFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Livewire\Livewire;
@@ -18,6 +19,7 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStack;
 use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
 use Sandstorm\KeycloakAdminApi;
 use Sandstorm\KeycloakAdminApi\Connection\Auth\KeycloakTokenProvider;
@@ -70,7 +72,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         $this->app->singleton(KeycloakSettingsProvider::class, ConfigKeycloakSettingsProvider::class);
 
         $httpFactory = new HttpFactory; // PSR-17 request + stream factory
-        $client = self::buildHttpClient();
+        $client = $this->buildHttpClient();
 
         // Explicit mode, no auto-fallback: a wrong/underprivileged mode fails loudly rather than
         // silently switching identity (plan §5). SSO (act-as-user) lands in a later slice.
@@ -138,14 +140,21 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * A plain Guzzle client with connect/read timeouts and NO logging middleware — token requests
+     * A Guzzle client with connect/read timeouts and NO logging middleware of its own — token requests
      * carry the client secret and admin responses carry user PII, so the client must never body-log.
+     *
+     * Its handler stack is bound as {@see KeycloakAdminHttpHandlerStack} so the host app can push its own
+     * (redaction-aware) HTTP tracing middleware onto it; see that class for how.
      */
-    private static function buildHttpClient(): Client
+    private function buildHttpClient(): Client
     {
+        $handlerStack = HandlerStack::create();
+        $this->app->instance(KeycloakAdminHttpHandlerStack::class, $handlerStack);
+
         return new Client([
             'connect_timeout' => (float) config('filament-keycloak-admin.http.connect_timeout', 5),
             'timeout' => (float) config('filament-keycloak-admin.http.timeout', 15),
+            'handler' => $handlerStack,
         ]);
     }
 }
