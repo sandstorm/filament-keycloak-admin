@@ -21,6 +21,7 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
+use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi\Dto\KeycloakCredential;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -44,6 +45,7 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
+    use LogsKeycloakAdminWrites;
 
     public string $userId;
 
@@ -109,6 +111,10 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
                     config('filament-keycloak-admin.pw_reset.redirect_uri'),
                 );
 
+                $this->logKeycloakWrite('credential.send_password_reset_email', [
+                    'target_user_id' => $this->userId,
+                ]);
+
                 Notification::make()
                     ->title('Password-reset email sent')
                     ->body('Keycloak has emailed the user a link to set a new password.')
@@ -138,6 +144,11 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
                 assert($credential->id !== null);
 
                 $this->credentialsApi->delete(new KeycloakUserId($this->userId), $credential->id);
+
+                $this->logKeycloakWrite('credential.remove', [
+                    'target_user_id' => $this->userId,
+                    'credential_type' => $credential->type,
+                ]);
 
                 $this->resetTable();
                 $this->dispatch('keycloak-user-changed');

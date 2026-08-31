@@ -21,6 +21,7 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
+use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi\Dto\KeycloakGroup;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -42,6 +43,7 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
+    use LogsKeycloakAdminWrites;
 
     public string $userId;
 
@@ -103,9 +105,15 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
             ])
             ->action(function (array $data): void {
                 $userId = new KeycloakUserId($this->userId);
-                foreach ($data['groupIds'] ?? [] as $groupId) {
+                $groupIds = $data['groupIds'] ?? [];
+                foreach ($groupIds as $groupId) {
                     $this->groupsApi->addUserToGroup($userId, $groupId);
                 }
+
+                $this->logKeycloakWrite('group.add', [
+                    'target_user_id' => $this->userId,
+                    'group_ids' => $groupIds,
+                ]);
 
                 $this->resetTable();
                 $this->dispatch('keycloak-user-changed');
@@ -125,7 +133,13 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
             ->modalDescription(fn (KeycloakRecord $record): string => sprintf('Remove this user from "%s"?', self::dto($record)->path ?? self::dto($record)->name))
             ->modalSubmitActionLabel('Remove')
             ->action(function (KeycloakRecord $record): void {
-                $this->groupsApi->removeUserFromGroup(new KeycloakUserId($this->userId), self::dto($record)->id);
+                $groupId = self::dto($record)->id;
+                $this->groupsApi->removeUserFromGroup(new KeycloakUserId($this->userId), $groupId);
+
+                $this->logKeycloakWrite('group.remove', [
+                    'target_user_id' => $this->userId,
+                    'group_id' => $groupId,
+                ]);
 
                 $this->resetTable();
                 $this->dispatch('keycloak-user-changed');
