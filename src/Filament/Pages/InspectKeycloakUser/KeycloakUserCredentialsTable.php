@@ -111,7 +111,8 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
                     config('filament-keycloak-admin.pw_reset.redirect_uri'),
                 );
 
-                $this->logKeycloakWrite('credential.send_password_reset_email', [
+                $this->logKeycloakWrite([
+                    self::LOG_CONTEXT_ACTION => 'credential.send_password_reset_email',
                     'target_user_id' => $this->userId,
                 ]);
 
@@ -145,7 +146,8 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
 
                 $this->credentialsApi->delete(new KeycloakUserId($this->userId), $credential->id);
 
-                $this->logKeycloakWrite('credential.remove', [
+                $this->logKeycloakWrite([
+                    self::LOG_CONTEXT_ACTION => 'credential.remove',
                     'target_user_id' => $this->userId,
                     'credential_type' => $credential->type,
                 ]);

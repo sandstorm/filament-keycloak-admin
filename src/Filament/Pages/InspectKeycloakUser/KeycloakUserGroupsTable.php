@@ -110,7 +110,8 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
                     $this->groupsApi->addUserToGroup($userId, $groupId);
                 }
 
-                $this->logKeycloakWrite('group.add', [
+                $this->logKeycloakWrite([
+                    self::LOG_CONTEXT_ACTION => 'group.add',
                     'target_user_id' => $this->userId,
                     'group_ids' => $groupIds,
                 ]);
@@ -136,7 +137,8 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
                 $groupId = self::dto($record)->id;
                 $this->groupsApi->removeUserFromGroup(new KeycloakUserId($this->userId), $groupId);
 
-                $this->logKeycloakWrite('group.remove', [
+                $this->logKeycloakWrite([
+                    self::LOG_CONTEXT_ACTION => 'group.remove',
                     'target_user_id' => $this->userId,
                     'group_id' => $groupId,
                 ]);

@@ -39,12 +39,18 @@ trait InteractsWithKeycloakWrites
         try {
             $write();
 
-            $this->logKeycloakWrite($action, $context);
+            $this->logKeycloakWrite([
+                self::LOG_CONTEXT_ACTION => $action,
+                ...$context,
+            ]);
 
             return true;
         } catch (UnexpectedKeycloakResponseException $exception) {
             if ($exception->statusCode === 401 || $exception->statusCode === 403) {
-                $this->logKeycloakWriteDenied($action, $context);
+                $this->logKeycloakWriteDenied([
+                    self::LOG_CONTEXT_ACTION => $action,
+                    ...$context,
+                ]);
 
                 Notification::make()
                     ->title('You do not have permission to make this change.')
