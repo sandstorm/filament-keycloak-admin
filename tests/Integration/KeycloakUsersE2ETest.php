@@ -34,7 +34,7 @@ final class KeycloakUsersE2ETest extends IntegrationTestCase
 
     /**
      * A denied/absent call surfaces the client library's single failure type rather than being
-     * swallowed (plan §8) — proven here against a bogus user id.
+     * swallowed — proven here against a bogus user id.
      */
     #[Test]
     public function an_absent_user_propagates_the_keycloak_exception(): void
@@ -42,5 +42,22 @@ final class KeycloakUsersE2ETest extends IntegrationTestCase
         $this->expectException(UnexpectedKeycloakResponseException::class);
 
         app(KeycloakUsersApi::class)->getById(new KeycloakUserId('00000000-0000-0000-0000-000000000000'));
+    }
+
+    /**
+     * The list page itself does not propagate: a rejected service-account grant (a real non-2xx from
+     * Keycloak's token endpoint, forced here with a corrupted secret) is caught around the query and
+     * rendered as the table's empty state instead of a 500 page. The exact status Keycloak answers a bad
+     * secret with isn't asserted here — only that the page degrades gracefully rather than erroring.
+     */
+    #[Test]
+    public function the_list_shows_a_friendly_notice_instead_of_a_500_when_keycloak_denies_the_request(): void
+    {
+        config()->set('filament-keycloak-admin.connection.client_secret', 'not-the-real-secret');
+
+        Livewire::test(KeycloakUsers::class)
+            ->assertOk()
+            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.users.load_error.heading'))
+            ->assertDontSee('jane');
     }
 }
