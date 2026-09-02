@@ -17,8 +17,8 @@ All notable changes to `filament-keycloak-admin` will be documented in this file
   selecting a channel by name.
 - `filament-keycloak-admin.logging.channel` config key — the log channel used when the host app hasn't
   bound `KeycloakAdminLogger` (defaults to the app's default channel).
-- `Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStack` — a container binding that exposes
-  the Guzzle `HandlerStack` backing the Keycloak Admin API client, so a host app can push its own HTTP
-  request/response logging middleware onto it. The client still carries no logging middleware by default
-  and never will: token requests carry the client secret and admin responses carry user PII, so redaction
-  stays the host's responsibility.
+- `Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer` — an optional interface a
+  host app can bind an implementation of to add its own HTTP request/response logging middleware to the
+  Guzzle `HandlerStack` backing the Keycloak Admin API client. The client still carries no logging
+  middleware by default and never will: token requests carry the client secret and admin responses carry
+  user PII, so redaction stays the host's responsibility.

@@ -19,7 +19,7 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
-use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStack;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
 use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
 use Sandstorm\KeycloakAdminApi;
 use Sandstorm\KeycloakAdminApi\Connection\Auth\KeycloakTokenProvider;
@@ -143,13 +143,17 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
      * A Guzzle client with connect/read timeouts and NO logging middleware of its own — token requests
      * carry the client secret and admin responses carry user PII, so the client must never body-log.
      *
-     * Its handler stack is bound as {@see KeycloakAdminHttpHandlerStack} so the host app can push its own
-     * (redaction-aware) HTTP tracing middleware onto it; see that class for how.
+     * If the host app has bound a {@see KeycloakAdminHttpHandlerStackCustomizer}, it is resolved here and
+     * given the chance to add its own (redaction-aware) HTTP tracing middleware to the handler stack
+     * before the client is built; see that interface for how.
      */
     private function buildHttpClient(): Client
     {
         $handlerStack = HandlerStack::create();
-        $this->app->instance(KeycloakAdminHttpHandlerStack::class, $handlerStack);
+        if ($this->app->has(KeycloakAdminHttpHandlerStackCustomizer::class)) {
+            $customizer = $this->app->get(KeycloakAdminHttpHandlerStackCustomizer::class);
+            $handlerStack = $customizer->customizeHandlerStack($handlerStack);
+        }
 
         return new Client([
             'connect_timeout' => (float) config('filament-keycloak-admin.http.connect_timeout', 5),
