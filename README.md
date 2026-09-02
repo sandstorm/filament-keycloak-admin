@@ -115,6 +115,69 @@ Only the backchannel URL is used today; the other two exist so a browser is neve
   `FilamentSsoTokenProvider` reads the token through `AdminKeycloakSession`. We recommend you to install
   `heloufir/filament-keycloak-sso` for the bundled `HeloufirAdminKeycloakSession` adapter.
 
+## Logging
+
+The plugin does not log anywhere by default — no channel, no fallback. It offers two independent,
+opt-in extension points instead: bind a PSR-3 logger to get an audit trail of write actions, and/or bind
+a Guzzle handler-stack customizer to get HTTP tracing. Neither is required; the plugin works exactly as
+before if you bind nothing.
+
+### Info audit logging
+
+Every write action (enable/disable a user, edit identity fields, group add/remove, send a password-reset
+email, remove a 2FA credential, log out all sessions) can log an audit line — `info` on success, `warning`
+when Keycloak denies the write (401/403). To receive it, bind a PSR-3 logger instance under
+`KeycloakAdminLogger` in your own service provider:
+
+```php
+use Psr\Log\LoggerInterface;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLogger;
+
+$this->app->singleton(KeycloakAdminLogger::class, fn () => app(LoggerInterface::class));
+// or a dedicated channel: fn () => Log::channel('keycloak-admin')
+```
+
+The bound instance does not need to implement `KeycloakAdminLogger` itself — any real PSR-3 logger works,
+since the interface exists only as a collision-free container key (so binding it can't accidentally hijack
+some other package's generic `Psr\Log\LoggerInterface` binding). Without a binding, write actions still
+work, they just aren't logged.
+
+Every call is a static message plus a context array — never a string-interpolated message, never PII
+beyond ids:
+
+```
+[info] Keycloak admin write succeeded {"admin_id":42,"action":"group.add","target_user_id":"…","group_ids":["…"]}
+[warning] Keycloak admin write denied {"admin_id":42,"action":"user.set_enabled","target_user_id":"…","enabled":false}
+```
+
+### HTTP outbound logging
+
+The Guzzle client used for every Keycloak Admin API call (token requests included) carries no logging
+middleware of its own and never will: token requests carry the client secret, and admin responses carry
+user PII, so redaction is a decision only your app can make correctly for its own environment. To add
+your own request/response logging, bind an implementation of `KeycloakAdminHttpHandlerStackCustomizer`:
+
+```php
+use GuzzleHttp\HandlerStack;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
+
+class MyHandlerStackCustomizer implements KeycloakAdminHttpHandlerStackCustomizer
+{
+    public function customizeHandlerStack(HandlerStack $handlerStack): HandlerStack
+    {
+        $handlerStack->push($myLoggingMiddleware, 'http-logging');
+
+        return $handlerStack;
+    }
+}
+
+$this->app->bind(KeycloakAdminHttpHandlerStackCustomizer::class, MyHandlerStackCustomizer::class);
+```
+
+When bound, the plugin resolves it and passes the client's real handler stack through
+`customizeHandlerStack()` once, while building the client — your middleware then runs on every request the
+plugin makes. Keep your middleware from logging the `Authorization` header or any response/request body.
+
 ## Testing
 
 Use **mise** (see `mise.toml`):
