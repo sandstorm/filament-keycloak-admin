@@ -19,6 +19,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi\Dto\KeycloakSession;
@@ -31,11 +32,13 @@ use function view;
  * Active sessions section — the user's currently-live sessions as a table (empty once logged
  * out/expired, which is normal). A "Log out all sessions" header action force-signs-out everywhere,
  * then re-reads the table and broadcasts the cross-tab signal (a logout shows up in user events too —
- * plan §7.2). Every failure propagates (plan §8).
+ * plan §7.2). A failed initial load is caught and shown as the table's empty state
+ * ({@see InteractsWithKeycloakReads}); other failures still propagate.
  */
 final class KeycloakUserSessionsTable extends Component implements HasActions, HasSchemas, HasTable
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -61,19 +64,21 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
 
     public function table(Table $table): Table
     {
-        return $table
-            ->heading('Active sessions')
-            ->records(fn (): Collection => $this->loadSessions())
-            ->columns([
-                TextColumn::make('ipAddress')->label('IP address')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->ipAddress)->placeholder('—'),
-                TextColumn::make('start')->label('Started')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedStart()),
-                TextColumn::make('lastAccess')->label('Last access')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedLastAccess()),
-                TextColumn::make('clients')->label('Clients')->state(fn (KeycloakRecord $record): string => self::dto($record)->clientsLabel()),
-            ])
-            ->headerActions([
-                $this->logoutAllAction(),
-            ])
-            ->emptyStateHeading('No active sessions.');
+        return $this->keycloakLoadErrorEmptyState(
+            $table
+                ->heading('Active sessions')
+                ->records(fn (): Collection => $this->loadSessions())
+                ->columns([
+                    TextColumn::make('ipAddress')->label('IP address')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->ipAddress)->placeholder('—'),
+                    TextColumn::make('start')->label('Started')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedStart()),
+                    TextColumn::make('lastAccess')->label('Last access')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedLastAccess()),
+                    TextColumn::make('clients')->label('Clients')->state(fn (KeycloakRecord $record): string => self::dto($record)->clientsLabel()),
+                ])
+                ->headerActions([
+                    $this->logoutAllAction(),
+                ]),
+            'No active sessions.',
+        );
     }
 
     private function logoutAllAction(): Action
@@ -101,9 +106,14 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
      */
     private function loadSessions(): Collection
     {
-        $sessions = $this->sessionsApi->getSessions(new KeycloakUserId($this->userId));
+        return $this->loadFromKeycloak(
+            function (): Collection {
+                $sessions = $this->sessionsApi->getSessions(new KeycloakUserId($this->userId));
 
-        return (new Collection($sessions->all()))->map(static fn (KeycloakSession $session, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $session));
+                return (new Collection($sessions->all()))->map(static fn (KeycloakSession $session, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $session));
+            },
+            new Collection,
+        );
     }
 
     private static function dto(KeycloakRecord $record): KeycloakSession

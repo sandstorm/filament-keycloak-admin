@@ -20,13 +20,16 @@ use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakWrites;
+use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi\Dto\KeycloakUserProfileAttributes;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
+use function assert;
 use function in_array;
 use function view;
 
@@ -50,12 +53,16 @@ use function view;
  * custom attribute additionally honours its schema permission (`adminCanEdit`): a view-only attribute is
  * shown read-only in the infolist and never appears as an editable field. A write can still be denied by
  * a mid-flight grant change, so every write goes through
- * {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as a friendly notice
- * (the scoped exception to plan §8; other failures still propagate).
+ * {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as a friendly notice.
+ *
+ * The initial read (user + realm profile schema, needed just to render) is guarded the same way on the
+ * read side ({@see InteractsWithKeycloakReads}): a failure replaces the infolist with a notice and hides
+ * the enable toggle, instead of a 500 page.
  */
 final class KeycloakUserIdentity extends Component implements HasActions, HasSchemas
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithKeycloakWrites;
     use InteractsWithSchemas;
 
@@ -113,12 +120,25 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
         $this->user = null;
         $this->profileAttributes = null;
         $this->attributeMapper = null;
+        $this->keycloakLoadError = null;
         $this->syncEnabledToggle();
     }
 
     public function identityInfolist(Schema $schema): Schema
     {
         $user = $this->loadUser();
+
+        if ($user === null) {
+            return $schema->components([$this->keycloakLoadErrorEntry()]);
+        }
+
+        try {
+            $entries = $this->attributeEntries($user);
+        } catch (UnexpectedKeycloakResponseException $exception) {
+            $this->keycloakLoadError = $exception;
+
+            return $schema->components([$this->keycloakLoadErrorEntry()]);
+        }
 
         return $schema->components([
             TextEntry::make('username')->state($user->username),
@@ -127,7 +147,7 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
                 ->hintAction($this->editIdentityAction()),
             IconEntry::make('emailVerified')->label('Email verified')->boolean()->state($user->emailVerified)
                 ->hintAction($this->editIdentityAction()),
-            ...$this->attributeEntries($user),
+            ...$entries,
             TextEntry::make('totpPending')
                 ->hiddenLabel()
                 ->state('TOTP setup pending — the user must configure an authenticator at next login.')
@@ -138,9 +158,28 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
     }
 
     /**
+     * A read-only notice replacing the infolist once the initial load has failed — see
+     * {@see InteractsWithKeycloakReads}.
+     */
+    private function keycloakLoadErrorEntry(): TextEntry
+    {
+        $exception = $this->keycloakLoadError;
+        assert($exception !== null);
+
+        return TextEntry::make('keycloakLoadError')
+            ->hiddenLabel()
+            ->state(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'))
+            ->helperText(self::describeKeycloakLoadError($exception))
+            ->color('danger')
+            ->icon(Heroicon::OutlinedExclamationTriangle)
+            ->columnSpanFull();
+    }
+
+    /**
      * The live enable/disable switch — a one-field form so flipping it writes immediately (no "save"),
      * like the stock Keycloak user page. Disabled (not hidden) when the caller may not manage this user,
-     * so the current state stays visible.
+     * so the current state stays visible. Hidden entirely once the initial load has failed — there is no
+     * server state to reflect or toggle.
      */
     public function enabledForm(Schema $schema): Schema
     {
@@ -148,7 +187,8 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
             Toggle::make('enabled')
                 ->label('Enabled')
                 ->live()
-                ->disabled(fn (): bool => ! $this->loadUser()->access->manage)
+                ->visible(fn (): bool => $this->keycloakLoadError === null)
+                ->disabled(fn (): bool => ! ($this->loadUser()?->access->manage ?? false))
                 ->afterStateUpdated(function (bool $state): void {
                     $this->setEnabled($state);
                 }),
@@ -184,7 +224,11 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
      */
     private function syncEnabledToggle(): void
     {
-        $this->enabledData['enabled'] = $this->loadUser()->enabled;
+        $user = $this->loadUser();
+
+        if ($user !== null) {
+            $this->enabledData['enabled'] = $user->enabled;
+        }
     }
 
     /**
@@ -194,6 +238,10 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
      * is *disabled* (not hidden) with a tooltip explaining why — so the affordance stays discoverable and
      * the missing permission is explicit. The write is a lossless read-modify-write through the DTO:
      * unlisted/managed attributes are never touched.
+     *
+     * Only ever attached to the schema once {@see self::identityInfolist()} has already resolved the user
+     * successfully, so {@see self::mustLoadUser()} below just reads the cache; the throwing variant is
+     * used anyway in case Keycloak drops between that render and this action being mounted.
      */
     public function editIdentityAction(): Action
     {
@@ -201,16 +249,16 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
             ->icon(Heroicon::OutlinedPencilSquare)
             ->iconButton()
             ->color('gray')
-            ->disabled(fn (): bool => ! $this->loadUser()->access->manage)
-            ->tooltip(fn (): string => $this->loadUser()->access->manage
+            ->disabled(fn (): bool => ! $this->mustLoadUser()->access->manage)
+            ->tooltip(fn (): string => $this->mustLoadUser()->access->manage
                 ? 'Edit'
                 : 'You do not have permission to edit this user.')
             ->modalHeading('Edit identity')
             ->fillForm(fn (): array => [
-                'firstName' => $this->loadUser()->firstName,
-                'lastName' => $this->loadUser()->lastName,
-                'emailVerified' => $this->loadUser()->emailVerified,
-                ...$this->attributeMapper()->formState($this->loadUser()),
+                'firstName' => $this->mustLoadUser()->firstName,
+                'lastName' => $this->mustLoadUser()->lastName,
+                'emailVerified' => $this->mustLoadUser()->emailVerified,
+                ...$this->attributeMapper()->formState($this->mustLoadUser()),
             ])
             ->schema([
                 TextInput::make('firstName')->label('First name'),
@@ -287,9 +335,36 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
         return $this->attributeMapper ??= new KeycloakUserAttributes($this->loadProfileAttributes());
     }
 
-    private function loadUser(): KeycloakUser
+    /**
+     * The safe, non-throwing accessor for the initial-render code paths (mount/sync/infolist/toggle
+     * visibility): returns null and stashes the failure on {@see self::$keycloakLoadError} instead of
+     * throwing once a load has failed this request.
+     */
+    private function loadUser(): ?KeycloakUser
     {
-        return $this->user ??= $this->usersApi->getById(new KeycloakUserId($this->userId));
+        if ($this->user !== null) {
+            return $this->user;
+        }
+
+        if ($this->keycloakLoadError !== null) {
+            return null;
+        }
+
+        return $this->user = $this->loadFromKeycloak(fn (): KeycloakUser => $this->fetchUser(), null);
+    }
+
+    /**
+     * The throwing accessor for action-context closures (the Edit modal) that only ever run once
+     * {@see self::loadUser()} has already resolved the user for this request.
+     */
+    private function mustLoadUser(): KeycloakUser
+    {
+        return $this->user ??= $this->fetchUser();
+    }
+
+    private function fetchUser(): KeycloakUser
+    {
+        return $this->usersApi->getById(new KeycloakUserId($this->userId));
     }
 
     private function loadProfileAttributes(): KeycloakUserProfileAttributes

@@ -20,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi\Dto\KeycloakGroup;
@@ -35,11 +36,14 @@ use function view;
  * Groups section — the realm groups the user belongs to, as a table. The per-user membership list is
  * small, so it renders whole (no pagination). An "Add to group" header action (picker of groups the
  * user is not yet in) and a per-row "Remove" mutate membership one group per call, then re-read the
- * table and broadcast the shared cross-tab signal (plan §7.2). Every failure propagates (plan §8).
+ * table and broadcast the shared cross-tab signal (plan §7.2). A failed initial load is caught and shown
+ * as the table's empty state ({@see InteractsWithKeycloakReads}); other failures (e.g. from the "Add to
+ * group" picker or a write) still propagate.
  */
 final class KeycloakUserGroupsTable extends Component implements HasActions, HasSchemas, HasTable
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -65,20 +69,22 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
 
     public function table(Table $table): Table
     {
-        return $table
-            ->heading('Group memberships')
-            ->records(fn (): Collection => $this->loadGroups())
-            ->columns([
-                TextColumn::make('name')->state(fn (KeycloakRecord $record): string => self::dto($record)->name),
-                TextColumn::make('path')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->path)->placeholder('—'),
-            ])
-            ->headerActions([
-                $this->addGroupsAction(),
-            ])
-            ->recordActions([
-                $this->removeGroupAction(),
-            ])
-            ->emptyStateHeading('This user is in no groups.');
+        return $this->keycloakLoadErrorEmptyState(
+            $table
+                ->heading('Group memberships')
+                ->records(fn (): Collection => $this->loadGroups())
+                ->columns([
+                    TextColumn::make('name')->state(fn (KeycloakRecord $record): string => self::dto($record)->name),
+                    TextColumn::make('path')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->path)->placeholder('—'),
+                ])
+                ->headerActions([
+                    $this->addGroupsAction(),
+                ])
+                ->recordActions([
+                    $this->removeGroupAction(),
+                ]),
+            'This user is in no groups.',
+        );
     }
 
     /**
@@ -172,9 +178,14 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
      */
     private function loadGroups(): Collection
     {
-        $groups = $this->groupsApi->getUserGroups(new KeycloakUserId($this->userId));
+        return $this->loadFromKeycloak(
+            function (): Collection {
+                $groups = $this->groupsApi->getUserGroups(new KeycloakUserId($this->userId));
 
-        return (new Collection($groups->all()))->map(static fn (KeycloakGroup $group, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $group));
+                return (new Collection($groups->all()))->map(static fn (KeycloakGroup $group, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $group));
+            },
+            new Collection,
+        );
     }
 
     private static function dto(KeycloakRecord $record): KeycloakGroup

@@ -18,6 +18,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\Paginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakAdminEvent;
@@ -28,8 +29,9 @@ use function view;
 
 /**
  * Admin history section — administrative actions performed ON this user (who changed what) as a table.
- * Full detail (auth client/ip, error, JSON representation) sits behind the row Details modal. Every
- * failure propagates (plan §8).
+ * Full detail (auth client/ip, error, JSON representation) sits behind the row Details modal. A failed
+ * initial load is caught and shown as the table's empty state ({@see InteractsWithKeycloakReads}); other
+ * failures still propagate.
  *
  * Keycloak's `/admin-events` endpoint has no count, so pagination is "simple" (Prev/Next) via a
  * `perPage + 1` probe.
@@ -37,6 +39,7 @@ use function view;
 final class KeycloakAdminEventsTable extends Component implements HasActions, HasSchemas, HasTable
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -62,29 +65,32 @@ final class KeycloakAdminEventsTable extends Component implements HasActions, Ha
 
     public function table(Table $table): Table
     {
-        return $table
-            ->heading('Admin history')
-            ->records(fn (int $page, int $recordsPerPage): Paginator => $this->loadEvents($page, $recordsPerPage))
-            ->paginationPageOptions([10, 25, 50])
-            ->columns([
-                TextColumn::make('time')->label('Time')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedTime()),
-                TextColumn::make('operationType')->label('Operation')->badge()
-                    ->color(fn (KeycloakRecord $record): string => self::dto($record)->error !== null ? 'danger' : 'gray')
-                    ->state(fn (KeycloakRecord $record): ?string => self::dto($record)->operationType)->placeholder('—'),
-                TextColumn::make('resourceType')->label('Type')->badge()->color('gray')
-                    ->state(fn (KeycloakRecord $record): ?string => self::dto($record)->resourceType)->placeholder('—'),
-                TextColumn::make('details')->label('Details')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->resourceLabel())->placeholder('—')->wrap(),
-                TextColumn::make('authUser')->label('By')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->authUser)->placeholder('—'),
-                TextColumn::make('authIpAddress')->label('IP')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->authIpAddress)->placeholder('—'),
-            ])
-            ->recordActions([
-                Action::make('details')
-                    ->label('Details')
-                    ->modalHeading('Admin event details')
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
-                    ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
-            ]);
+        return $this->keycloakLoadErrorEmptyState(
+            $table
+                ->heading('Admin history')
+                ->records(fn (int $page, int $recordsPerPage): Paginator => $this->loadEvents($page, $recordsPerPage))
+                ->paginationPageOptions([10, 25, 50])
+                ->columns([
+                    TextColumn::make('time')->label('Time')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedTime()),
+                    TextColumn::make('operationType')->label('Operation')->badge()
+                        ->color(fn (KeycloakRecord $record): string => self::dto($record)->error !== null ? 'danger' : 'gray')
+                        ->state(fn (KeycloakRecord $record): ?string => self::dto($record)->operationType)->placeholder('—'),
+                    TextColumn::make('resourceType')->label('Type')->badge()->color('gray')
+                        ->state(fn (KeycloakRecord $record): ?string => self::dto($record)->resourceType)->placeholder('—'),
+                    TextColumn::make('details')->label('Details')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->resourceLabel())->placeholder('—')->wrap(),
+                    TextColumn::make('authUser')->label('By')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->authUser)->placeholder('—'),
+                    TextColumn::make('authIpAddress')->label('IP')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->authIpAddress)->placeholder('—'),
+                ])
+                ->recordActions([
+                    Action::make('details')
+                        ->label('Details')
+                        ->modalHeading('Admin event details')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
+                ]),
+            'No admin events recorded.',
+        );
     }
 
     /**
@@ -92,14 +98,19 @@ final class KeycloakAdminEventsTable extends Component implements HasActions, Ha
      */
     private function loadEvents(int $page, int $recordsPerPage): Paginator
     {
-        $first = ($page - 1) * $recordsPerPage;
+        return $this->loadFromKeycloak(
+            function () use ($page, $recordsPerPage): Paginator {
+                $first = ($page - 1) * $recordsPerPage;
 
-        $records = [];
-        foreach ($this->eventsApi->getAdminEventsForUser(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
-            $records[] = KeycloakRecord::for((string) ($first + $index), $event);
-        }
+                $records = [];
+                foreach ($this->eventsApi->getAdminEventsForUser(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
+                    $records[] = KeycloakRecord::for((string) ($first + $index), $event);
+                }
 
-        return new Paginator($records, $recordsPerPage, $page);
+                return new Paginator($records, $recordsPerPage, $page);
+            },
+            new Paginator([], $recordsPerPage, $page),
+        );
     }
 
     /**

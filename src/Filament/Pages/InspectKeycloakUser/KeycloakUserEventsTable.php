@@ -18,6 +18,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\Paginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakUserEvent;
@@ -29,7 +30,8 @@ use function view;
 /**
  * User events section — every event Keycloak recorded for this user (LOGIN, LOGIN_ERROR,
  * UPDATE_PASSWORD, …) as a table mirroring Keycloak's own list. Error is surfaced in the event badge;
- * full detail sits behind the row Details modal. Every failure propagates (plan §8).
+ * full detail sits behind the row Details modal. A failed initial load is caught and shown as the
+ * table's empty state ({@see InteractsWithKeycloakReads}); other failures still propagate.
  *
  * Keycloak's `/events` endpoint has no count, so pagination is "simple" (Prev/Next) via a `perPage + 1`
  * probe.
@@ -37,6 +39,7 @@ use function view;
 final class KeycloakUserEventsTable extends Component implements HasActions, HasSchemas, HasTable
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -62,26 +65,29 @@ final class KeycloakUserEventsTable extends Component implements HasActions, Has
 
     public function table(Table $table): Table
     {
-        return $table
-            ->heading('User events')
-            ->records(fn (int $page, int $recordsPerPage): Paginator => $this->loadEvents($page, $recordsPerPage))
-            ->paginationPageOptions([10, 25, 50])
-            ->columns([
-                TextColumn::make('time')->label('Time')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedTime()),
-                TextColumn::make('event')->label('Event')->badge()
-                    ->color(fn (KeycloakRecord $record): string => self::dto($record)->error !== null ? 'danger' : 'gray')
-                    ->state(fn (KeycloakRecord $record): string => self::dto($record)->label()),
-                TextColumn::make('ipAddress')->label('IP address')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->ipAddress)->placeholder('—'),
-                TextColumn::make('clientId')->label('Client')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->clientId)->placeholder('—'),
-            ])
-            ->recordActions([
-                Action::make('details')
-                    ->label('Details')
-                    ->modalHeading('Event details')
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
-                    ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
-            ]);
+        return $this->keycloakLoadErrorEmptyState(
+            $table
+                ->heading('User events')
+                ->records(fn (int $page, int $recordsPerPage): Paginator => $this->loadEvents($page, $recordsPerPage))
+                ->paginationPageOptions([10, 25, 50])
+                ->columns([
+                    TextColumn::make('time')->label('Time')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedTime()),
+                    TextColumn::make('event')->label('Event')->badge()
+                        ->color(fn (KeycloakRecord $record): string => self::dto($record)->error !== null ? 'danger' : 'gray')
+                        ->state(fn (KeycloakRecord $record): string => self::dto($record)->label()),
+                    TextColumn::make('ipAddress')->label('IP address')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->ipAddress)->placeholder('—'),
+                    TextColumn::make('clientId')->label('Client')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->clientId)->placeholder('—'),
+                ])
+                ->recordActions([
+                    Action::make('details')
+                        ->label('Details')
+                        ->modalHeading('Event details')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
+                ]),
+            'No user events recorded.',
+        );
     }
 
     /**
@@ -89,14 +95,19 @@ final class KeycloakUserEventsTable extends Component implements HasActions, Has
      */
     private function loadEvents(int $page, int $recordsPerPage): Paginator
     {
-        $first = ($page - 1) * $recordsPerPage;
+        return $this->loadFromKeycloak(
+            function () use ($page, $recordsPerPage): Paginator {
+                $first = ($page - 1) * $recordsPerPage;
 
-        $records = [];
-        foreach ($this->eventsApi->getUserEvents(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
-            $records[] = KeycloakRecord::for((string) ($first + $index), $event);
-        }
+                $records = [];
+                foreach ($this->eventsApi->getUserEvents(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
+                    $records[] = KeycloakRecord::for((string) ($first + $index), $event);
+                }
 
-        return new Paginator($records, $recordsPerPage, $page);
+                return new Paginator($records, $recordsPerPage, $page);
+            },
+            new Paginator([], $recordsPerPage, $page),
+        );
     }
 
     /**

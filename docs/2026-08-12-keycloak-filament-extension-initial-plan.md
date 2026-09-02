@@ -22,10 +22,12 @@ The plugin was refactored to match this plan. **Done:**
 - **List page (§7.1)** — records cross as `KeycloakRecord`; whole-row `recordUrl`; no `viewAction`.
 - **Detail page (§7.2)** — tab orchestrator; Overview stacks Identity + Groups + Credentials; sessions/events/admin lazy;
   cross-tab refresh via `keycloak-user-changed` + `#[On]` → `resetTable()`.
-- **Failure model (§8)** — failures propagate everywhere except the list page's own query: `KeycloakUsers::loadUsers()`
-  catches `UnexpectedKeycloakResponseException` and renders a status-bucketed notice as the table's empty state instead
-  of a 500 page. The `@keycloakboundary` directive, the unavailable partial, and all `KeycloakAuthenticationException`
-  catches are gone (the client lib has one type, `UnexpectedKeycloakResponseException`).
+- **Failure model (§8)** — failures propagate everywhere except a page/section's own initial read: every list/detail
+  page and detail-tab component uses `Filament\Concerns\InteractsWithKeycloakReads` to catch
+  `UnexpectedKeycloakResponseException` and render a status-bucketed notice (table empty state, infolist notice, or a
+  page-level banner) instead of a 500 page. The `@keycloakboundary` directive, the unavailable partial, and all
+  `KeycloakAuthenticationException` catches from the pre-refactor code are gone (the client lib has one type,
+  `UnexpectedKeycloakResponseException`).
 - **Config (§9)** — plugin ships a structure-only stub; real values live in the app at
   `admin/config/filament-keycloak-admin.php`. The plugin never calls `env()`.
 - **Views** — six per-component blades collapsed to two shared (`keycloak-table`, `keycloak-infolist`).
@@ -231,22 +233,28 @@ tables is the deliberate, cheaper trade. Every table component renders the **sin
 
 ---
 
-## 8. Failure handling — propagate, except the list page's own query
+## 8. Failure handling — propagate, except each page/section's own initial read
 
-The plugin mostly does **not** catch Keycloak failures: any `UnexpectedKeycloakResponseException` raised outside a page's
-own records query (detail-page sections, actions, ...) **propagates** → framework error page + log. No
-`@keycloakboundary` directive, no generic per-section "unavailable" notice.
+The plugin does **not** catch Keycloak failures triggered by an *action* (a write, a picker's options, a modal's
+`fillForm`) — those still propagate → framework error page + log, same as any other unhandled exception. What is
+caught, uniformly via `Filament\Concerns\InteractsWithKeycloakReads`, is the read that backs a page or detail-page
+section's **initial render**: `KeycloakUsers` (the list), `InspectKeycloakUser` (the title/subheading lookup), and
+every tab component (`KeycloakUserIdentity`, `KeycloakUserGroupsTable`, `KeycloakUserCredentialsTable`,
+`KeycloakUserSessionsTable`, `KeycloakUserEventsTable`, `KeycloakAdminEventsTable`). This is the exception to
+"propagate" because a broken Keycloak connection is the *expected*, recoverable steady state for a page/section an
+admin can land on directly — every other failure still propagates.
 
-The one deliberate exception is `KeycloakUsers::loadUsers()`: the list/count calls backing the table's `records()` hook
-are wrapped in a try/catch keyed on `UnexpectedKeycloakResponseException`. A caught failure returns an empty page (0
-records) and stores the exception on the page; the table's `emptyState*` hooks then read it back to show a heading +
-a status-bucketed description (`->statusCode === null` unreachable, `401`/`403` forbidden, `>= 500` server error, else
-unexpected) instead of a 500 page or a bare "no results" table. This is the one exception because a broken Keycloak
-connection is the *expected*, recoverable steady state for the page an admin lands on first — every other failure still
-propagates.
+`InteractsWithKeycloakReads::loadFromKeycloak()` wraps the call, catches `UnexpectedKeycloakResponseException`, and
+stashes it on `$keycloakLoadError`; the caller falls back to an empty result (0 records, no user). Table-backed
+sections apply `keycloakLoadErrorEmptyState()` to render a heading + a status-bucketed description
+(`->statusCode === null` unreachable, `401`/`403` forbidden, `>= 500` server error, else unexpected) as the table's
+empty state instead of a 500 page or a bare "no results" table. `KeycloakUserIdentity` (an infolist, not a table)
+swaps its fields for a single danger-colored notice entry and hides the enable toggle. `InspectKeycloakUser` falls
+back to the raw id for the page title and adds a banner above the tabs — the tabs still render, since each child
+component makes its own independent call and can fail differently (e.g. one endpoint denied, another fine).
 
 The **no-fallback** guarantee still holds and lives in the ServiceProvider: the token provider is selected once from
-`auth_mode`; a wrong/underprivileged mode surfaces as an error, never a silent identity switch. The list page's catch
+`auth_mode`; a wrong/underprivileged mode surfaces as an error, never a silent identity switch. The read-side catch
 does not weaken this — a denied service-account grant still shows up (as a "forbidden" notice instead of a 500), it is
 never retried under a different identity.
 

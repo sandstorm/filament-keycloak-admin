@@ -57,7 +57,7 @@ final class KeycloakUsersE2ETest extends IntegrationTestCase
 
         Livewire::test(KeycloakUsers::class)
             ->assertOk()
-            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.users.load_error.heading'))
+            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'))
             ->assertDontSee('jane');
     }
 }

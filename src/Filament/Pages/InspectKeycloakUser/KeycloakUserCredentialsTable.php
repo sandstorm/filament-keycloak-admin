@@ -20,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi\Dto\KeycloakCredential;
@@ -32,7 +33,8 @@ use function view;
 
 /**
  * Security / 2FA section — the user's stored credentials (password + any OTP/WebAuthn factors) as a
- * table. An OTP/WebAuthn row present means 2FA is configured. Every failure propagates (plan §8).
+ * table. An OTP/WebAuthn row present means 2FA is configured. A failed initial load is caught and shown
+ * as the table's empty state ({@see InteractsWithKeycloakReads}); other failures still propagate.
  *
  * Per-credential removal is **whitelisted**: only second-factor credentials (OTP/WebAuthn) with a real
  * id are removable — `password` is never removable here (removing it is not a 2FA reset and could lock
@@ -42,6 +44,7 @@ use function view;
 final class KeycloakUserCredentialsTable extends Component implements HasActions, HasSchemas, HasTable
 {
     use InteractsWithActions;
+    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -67,22 +70,24 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
 
     public function table(Table $table): Table
     {
-        return $table
-            ->heading('Credentials & 2FA')
-            ->records(fn (): Collection => $this->loadCredentials())
-            ->columns([
-                TextColumn::make('type')->badge()->state(fn (KeycloakRecord $record): string => self::dto($record)->type),
-                TextColumn::make('userLabel')->label('Label')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->userLabel)->placeholder('—'),
-                TextColumn::make('createdAt')->label('Created')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedCreatedAt()),
-                IconColumn::make('secondFactor')->label('Second factor')->boolean()->state(fn (KeycloakRecord $record): bool => self::dto($record)->isSecondFactor()),
-            ])
-            ->headerActions([
-                $this->triggerPasswordResetAction(),
-            ])
-            ->recordActions([
-                $this->removeCredentialAction(),
-            ])
-            ->emptyStateHeading('No credentials stored.');
+        return $this->keycloakLoadErrorEmptyState(
+            $table
+                ->heading('Credentials & 2FA')
+                ->records(fn (): Collection => $this->loadCredentials())
+                ->columns([
+                    TextColumn::make('type')->badge()->state(fn (KeycloakRecord $record): string => self::dto($record)->type),
+                    TextColumn::make('userLabel')->label('Label')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->userLabel)->placeholder('—'),
+                    TextColumn::make('createdAt')->label('Created')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedCreatedAt()),
+                    IconColumn::make('secondFactor')->label('Second factor')->boolean()->state(fn (KeycloakRecord $record): bool => self::dto($record)->isSecondFactor()),
+                ])
+                ->headerActions([
+                    $this->triggerPasswordResetAction(),
+                ])
+                ->recordActions([
+                    $this->removeCredentialAction(),
+                ]),
+            'No credentials stored.',
+        );
     }
 
     /**
@@ -177,9 +182,14 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
      */
     private function loadCredentials(): Collection
     {
-        $credentials = $this->credentialsApi->get(new KeycloakUserId($this->userId));
+        return $this->loadFromKeycloak(
+            function (): Collection {
+                $credentials = $this->credentialsApi->get(new KeycloakUserId($this->userId));
 
-        return (new Collection($credentials->all()))->map(static fn (KeycloakCredential $credential, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $credential));
+                return (new Collection($credentials->all()))->map(static fn (KeycloakCredential $credential, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $credential));
+            },
+            new Collection,
+        );
     }
 
     private static function dto(KeycloakRecord $record): KeycloakCredential
