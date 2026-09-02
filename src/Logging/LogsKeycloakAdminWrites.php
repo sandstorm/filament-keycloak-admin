@@ -44,7 +44,8 @@ trait LogsKeycloakAdminWrites
      */
     private function emitKeycloakAdminLog(string $level, string $message, array $context): void
     {
-        KeycloakAdminLoggerFactory::resolve(app())->log($level, $message, [
+        $logger = KeycloakAdminLoggerFactory::resolve(app());
+        $logger?->log($level, $message, [
             'admin_id' => Filament::auth()->id(),
             ...$context,
         ]);

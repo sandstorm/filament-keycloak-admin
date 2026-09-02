@@ -38,15 +38,6 @@ return [
         'timeout' => 15,
     ],
 
-    /**
-     * Audit logging for write actions. Only consulted when the app has not bound its own PSR-3 instance
-     * under Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLogger — binding by instance takes
-     * priority over this config channel (see KeycloakAdminLoggerFactory).
-     */
-    'logging' => [
-        'channel' => null, // null = the app's default channel (config('logging.default'))
-    ],
-
     // Send-password-reset-email action (execute-actions-email UPDATE_PASSWORD) — the admin never sees
     // or sets the password. Requires realm SMTP.
     'pw_reset' => [
