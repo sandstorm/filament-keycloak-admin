@@ -16,6 +16,7 @@ use Sandstorm\FilamentKeycloakAdmin\Auth\AdminKeycloakSession;
 use Sandstorm\FilamentKeycloakAdmin\Auth\FilamentSsoTokenProvider;
 use Sandstorm\FilamentKeycloakAdmin\Auth\HeloufirAdminKeycloakSession;
 use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\SsoAuthErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakAdminEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserEventsTable;
@@ -164,13 +165,15 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         Livewire::component('keycloak-user-events-table', KeycloakUserEventsTable::class);
         Livewire::component('keycloak-admin-events-table', KeycloakAdminEventsTable::class);
 
-        // The single place a Keycloak read failure becomes a response — see KeycloakLoadErrorRenderer.
+        // The single place a Keycloak read failure (or, in `sso` mode, an auth failure obtaining the
+        // admin's own bearer) becomes a response — see KeycloakLoadErrorRenderer / SsoAuthErrorRenderer.
         // Must resolve the *contract* (the actual singleton the kernel renders exceptions through) —
         // `Handler::class` itself isn't bound to anything, so `make()`ing it directly builds a
         // throwaway instance that never sees a real request's exceptions.
         $handler = $this->app->make(ExceptionHandler::class);
         if ($handler instanceof Handler) {
             $handler->renderable(new KeycloakLoadErrorRenderer);
+            $handler->renderable(new SsoAuthErrorRenderer);
         }
     }
 

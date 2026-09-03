@@ -53,6 +53,7 @@ final class KeycloakLoadErrorRenderer
         }
 
         return response()->view('filament-keycloak-admin::filament.pages.keycloak-load-error', [
+            'heading' => __('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'),
             'message' => self::describe($cause),
         ], 503);
     }

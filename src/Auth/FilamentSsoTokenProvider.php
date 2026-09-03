@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Sandstorm\FilamentKeycloakAdmin\Auth;
 
-use RuntimeException;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\SsoAuthException;
 use Sandstorm\KeycloakAdminApi\Connection\Auth\KeycloakTokenProvider;
 
 use function base64_decode;
@@ -39,7 +39,8 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
 
     public function __construct(
         private readonly AdminKeycloakSession $session,
-    ) {}
+    ) {
+    }
 
     public function currentBearer(): string
     {
@@ -47,7 +48,10 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
         if ($tokens === null) {
             // No OIDC session for this admin → there is no identity to act as. Fail loudly; sso mode must
             // never silently use someone else's (e.g. service-account) authority.
-            throw new RuntimeException('No Keycloak session for the current admin; sso mode cannot obtain a bearer to act as this user.', 1755600001);
+            throw new SsoAuthException(
+                'No Keycloak session for the current admin; sso mode cannot obtain a bearer to act as this user.',
+                1755600001
+            );
         }
 
         if ($this->isValidNow($tokens->accessToken)) {
@@ -61,7 +65,10 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
 
         // Stored token expired and the refresh produced nothing usable → the admin's session is gone.
         // Loud and terminal, same no-fallback invariant.
-        throw new RuntimeException('The current admin\'s Keycloak session could not be refreshed; sso mode has no valid bearer to act as this user.', 1755600002);
+        throw new SsoAuthException(
+            'The current admin\'s Keycloak session could not be refreshed; sso mode has no valid bearer to act as this user.',
+            1755600002
+        );
     }
 
     /**
@@ -77,7 +84,7 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
         }
 
         $payload = json_decode(self::base64UrlDecode($parts[1]), true);
-        if (! is_array($payload) || ! is_int($payload['exp'] ?? null)) {
+        if (!is_array($payload) || !is_int($payload['exp'] ?? null)) {
             return false;
         }
 
@@ -88,6 +95,6 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
     {
         $padded = $segment . str_repeat('=', (4 - strlen($segment) % 4) % 4);
 
-        return (string) base64_decode(strtr($padded, '-_', '+/'), true);
+        return (string)base64_decode(strtr($padded, '-_', '+/'), true);
     }
 }
