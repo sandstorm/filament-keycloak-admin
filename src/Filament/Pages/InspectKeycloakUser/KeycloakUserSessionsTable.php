@@ -20,6 +20,7 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
+use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi\Dto\KeycloakSession;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
@@ -38,6 +39,7 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
+    use LogsKeycloakAdminWrites;
 
     public string $userId;
 
@@ -88,6 +90,11 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
             ->modalSubmitActionLabel('Log out everywhere')
             ->action(function (): void {
                 $this->sessionsApi->logoutAll(new KeycloakUserId($this->userId));
+
+                $this->logKeycloakWrite([
+                    self::LOG_CONTEXT_ACTION => 'session.logout_all',
+                    'target_user_id' => $this->userId,
+                ]);
 
                 $this->resetTable();
                 $this->dispatch('keycloak-user-changed');
