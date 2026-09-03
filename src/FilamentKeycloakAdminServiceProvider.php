@@ -19,8 +19,8 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
-use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
 use Sandstorm\KeycloakAdminApi;
 use Sandstorm\KeycloakAdminApi\Connection\Auth\KeycloakTokenProvider;
@@ -77,6 +77,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
             $authMode = config('filament-keycloak-admin.auth_mode');
             $httpFactory = new HttpFactory; // PSR-17 request + stream factory
             $client = self::buildHttpClient($app, KeycloakHttpClientName::KEYCLOAK_TOKEN_PROVIDER);
+
             return match ($authMode) {
                 'service_account' => new ServiceAccountTokenProvider(
                     $app->make(KeycloakSettingsProvider::class),
@@ -86,7 +87,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
                 ),
                 'sso' => new FilamentSsoTokenProvider(self::resolveAdminKeycloakSession($app)),
                 default => throw new RuntimeException(
-                    sprintf('Unknown Keycloak auth_mode "%s"; expected "service_account" or "sso".', (string)$authMode),
+                    sprintf('Unknown Keycloak auth_mode "%s"; expected "service_account" or "sso".', (string) $authMode),
                     1750000020
                 ),
             };
@@ -95,6 +96,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         $this->app->singleton(KeycloakTransport::class, function (Application $app): KeycloakTransport {
             $httpFactory = new HttpFactory; // PSR-17 request + stream factory
             $client = self::buildHttpClient($app, KeycloakHttpClientName::KEYCLOAK_TRANSPORT);
+
             return new KeycloakTransport(
                 $app->make(KeycloakSettingsProvider::class),
                 $client,
@@ -106,43 +108,43 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
 
         $this->app->singleton(
             KeycloakUsersApi::class,
-            fn(Application $app): KeycloakUsersApi => new KeycloakUsersApiImplementation(
+            fn (Application $app): KeycloakUsersApi => new KeycloakUsersApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakGroupsApi::class,
-            fn(Application $app): KeycloakGroupsApi => new KeycloakGroupsApiImplementation(
+            fn (Application $app): KeycloakGroupsApi => new KeycloakGroupsApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakCredentialsApi::class,
-            fn(Application $app): KeycloakCredentialsApi => new KeycloakCredentialsApiImplementation(
+            fn (Application $app): KeycloakCredentialsApi => new KeycloakCredentialsApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakSessionsApi::class,
-            fn(Application $app): KeycloakSessionsApi => new KeycloakSessionsApiImplementation(
+            fn (Application $app): KeycloakSessionsApi => new KeycloakSessionsApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakEventsApi::class,
-            fn(Application $app): KeycloakEventsApi => new KeycloakEventsApiImplementation(
+            fn (Application $app): KeycloakEventsApi => new KeycloakEventsApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakRealmApi::class,
-            fn(Application $app): KeycloakRealmApi => new KeycloakRealmApiImplementation(
+            fn (Application $app): KeycloakRealmApi => new KeycloakRealmApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
         $this->app->singleton(
             KeycloakClientsApi::class,
-            fn(Application $app): KeycloakClientsApi => new KeycloakClientsApiImplementation(
+            fn (Application $app): KeycloakClientsApi => new KeycloakClientsApiImplementation(
                 $app->make(KeycloakTransport::class)
             )
         );
@@ -199,8 +201,8 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         }
 
         return new Client([
-            'connect_timeout' => (float)config('filament-keycloak-admin.http.connect_timeout', 5),
-            'timeout' => (float)config('filament-keycloak-admin.http.timeout', 15),
+            'connect_timeout' => (float) config('filament-keycloak-admin.http.connect_timeout', 5),
+            'timeout' => (float) config('filament-keycloak-admin.http.timeout', 15),
             'handler' => $handlerStack,
         ]);
     }

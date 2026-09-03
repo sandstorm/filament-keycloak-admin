@@ -6,6 +6,7 @@ namespace Sandstorm\FilamentKeycloakAdmin\Tests\Feature\Http;
 
 use GuzzleHttp\Psr7\Request;
 use PHPUnit\Framework\Attributes\Test;
+use Sandstorm\FilamentKeycloakAdmin\Auth\AdminKeycloakSession;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
@@ -19,7 +20,7 @@ use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
  * must hand it the real stack backing each Guzzle client the package builds, tagged with which client it
  * is via {@see KeycloakHttpClientName}, and use whatever it returns. `buildHttpClient()` only runs lazily,
  * the first time something resolves a client that needs one, so a plain `getEnvironmentSetUp()` binding
- * (same timing as {@see \Sandstorm\FilamentKeycloakAdmin\Auth\AdminKeycloakSession}) is all a host — or a
+ * (same timing as {@see AdminKeycloakSession}) is all a host — or a
  * test — needs; no provider ordering trick required.
  *
  * In `service_account` auth mode, resolving the Keycloak API surface builds two independent Guzzle

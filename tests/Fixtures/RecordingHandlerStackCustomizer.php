@@ -8,8 +8,8 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Psr7\Response;
 use Psr\Http\Message\RequestInterface;
-use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 
 /**
  * A {@see KeycloakAdminHttpHandlerStackCustomizer} that records how the extension point is invoked and
