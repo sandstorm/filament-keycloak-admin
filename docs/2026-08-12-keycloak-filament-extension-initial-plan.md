@@ -22,12 +22,14 @@ The plugin was refactored to match this plan. **Done:**
 - **List page (§7.1)** — records cross as `KeycloakRecord`; whole-row `recordUrl`; no `viewAction`.
 - **Detail page (§7.2)** — tab orchestrator; Overview stacks Identity + Groups + Credentials; sessions/events/admin lazy;
   cross-tab refresh via `keycloak-user-changed` + `#[On]` → `resetTable()`.
-- **Failure model (§8)** — failures propagate everywhere except a page/section's own initial read: every list/detail
-  page and detail-tab component uses `Filament\Concerns\InteractsWithKeycloakReads` to catch
-  `UnexpectedKeycloakResponseException` and render a status-bucketed notice (table empty state, infolist notice, or a
-  page-level banner) instead of a 500 page. The `@keycloakboundary` directive, the unavailable partial, and all
-  `KeycloakAuthenticationException` catches from the pre-refactor code are gone (the client lib has one type,
-  `UnexpectedKeycloakResponseException`).
+- **Failure model (§8)** — no page or component catches a Keycloak read failure itself. A single
+  `Exceptions\KeycloakLoadErrorRenderer`, registered once as a Laravel exception renderable, catches
+  `UnexpectedKeycloakResponseException` wherever it surfaces (list page, detail page, any tab component) and renders
+  one status-bucketed notice inside the panel's own layout — chrome intact, no attempt to still show whichever
+  table/infolist was mid-render. Write denials (401/403) are the one exception, still handled at the point of the
+  write by `InteractsWithKeycloakWrites::runKeycloakWrite()`. The `@keycloakboundary` directive, the unavailable
+  partial, and all `KeycloakAuthenticationException` catches from the pre-refactor code are gone (the client lib has
+  one type, `UnexpectedKeycloakResponseException`).
 - **Config (§9)** — plugin ships a structure-only stub; real values live in the app at
   `admin/config/filament-keycloak-admin.php`. The plugin never calls `env()`.
 - **Views** — six per-component blades collapsed to two shared (`keycloak-table`, `keycloak-infolist`).
@@ -233,25 +235,32 @@ tables is the deliberate, cheaper trade. Every table component renders the **sin
 
 ---
 
-## 8. Failure handling — propagate, except each page/section's own initial read
+## 8. Failure handling — propagate, caught in exactly two places
 
-The plugin does **not** catch Keycloak failures triggered by an *action* (a write, a picker's options, a modal's
-`fillForm`) — those still propagate → framework error page + log, same as any other unhandled exception. What is
-caught, uniformly via `Filament\Concerns\InteractsWithKeycloakReads`, is the read that backs a page or detail-page
-section's **initial render**: `KeycloakUsers` (the list), `InspectKeycloakUser` (the title/subheading lookup), and
-every tab component (`KeycloakUserIdentity`, `KeycloakUserGroupsTable`, `KeycloakUserCredentialsTable`,
-`KeycloakUserSessionsTable`, `KeycloakUserEventsTable`, `KeycloakAdminEventsTable`). This is the exception to
-"propagate" because a broken Keycloak connection is the *expected*, recoverable steady state for a page/section an
-admin can land on directly — every other failure still propagates.
+No page or detail-tab component contains any Keycloak error handling of its own — every `table()`, `identityInfolist()`
+and `records()` closure just calls the API and lets a failure throw, same as any other unhandled exception. Two
+mechanisms turn that into something other than a 500, each scoped to a different kind of failure:
 
-`InteractsWithKeycloakReads::loadFromKeycloak()` wraps the call, catches `UnexpectedKeycloakResponseException`, and
-stashes it on `$keycloakLoadError`; the caller falls back to an empty result (0 records, no user). Table-backed
-sections apply `keycloakLoadErrorEmptyState()` to render a heading + a status-bucketed description
-(`->statusCode === null` unreachable, `401`/`403` forbidden, `>= 500` server error, else unexpected) as the table's
-empty state instead of a 500 page or a bare "no results" table. `KeycloakUserIdentity` (an infolist, not a table)
-swaps its fields for a single danger-colored notice entry and hides the enable toggle. `InspectKeycloakUser` falls
-back to the raw id for the page title and adds a banner above the tabs — the tabs still render, since each child
-component makes its own independent call and can fail differently (e.g. one endpoint denied, another fine).
+- **Reads** — `Exceptions\KeycloakLoadErrorRenderer`, registered once (`FilamentKeycloakAdminServiceProvider::packageBooted()`)
+  as a Laravel exception `renderable()`, not a trait any page or component uses. A read failure — the list page's
+  table, the detail page's title lookup, any tab component's table/infolist, wherever — propagates uncaught until it
+  reaches this renderer. Because the failure almost always originates inside Blade evaluation (a `records()` closure,
+  a nested tab component), Laravel's compiler engine wraps it in `Illuminate\View\ViewException` first, possibly more
+  than once across component boundaries; the renderer walks `getPrevious()` to find the real
+  `UnexpectedKeycloakResponseException` before deciding it's ours. The response it builds renders the panel's own
+  `filament-panels::components.layout.index` directly (not `<x-filament-panels::page>`, which needs a live page
+  component bound as `$this`) with one status-bucketed notice as the content — topbar/sidebar intact, no attempt to
+  still show whatever table/infolist was mid-render.
+- **Writes** — unchanged: `InteractsWithKeycloakWrites::runKeycloakWrite()`, called at each write's own call site,
+  turns a 401/403 denial into a friendly notification instead of propagating; every other write failure still
+  propagates.
+
+Earlier revisions tried to catch reads per-component (a `HandlesKeycloakLoadErrors`/`InteractsWithKeycloakReads` trait
+used by every page *and* every tab component, each with its own eager-fetch-then-cache dance to avoid double-hitting
+Keycloak, plus a bespoke empty-state per table). That traded one 500-page bug for a lot of duplicated, fragile
+machinery for comparatively little benefit — a table/infolist doesn't need to keep rendering around a failed read,
+so collapsing every failure into one page-wide notice, caught once globally, removed the per-component code
+entirely.
 
 The **no-fallback** guarantee still holds and lives in the ServiceProvider: the token provider is selected once from
 `auth_mode`; a wrong/underprivileged mode surfaces as an error, never a silent identity switch. The read-side catch

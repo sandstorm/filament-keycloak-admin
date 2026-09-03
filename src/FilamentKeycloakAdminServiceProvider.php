@@ -8,11 +8,13 @@ use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\HttpFactory;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Foundation\Exceptions\Handler;
 use Livewire\Livewire;
 use RuntimeException;
 use Sandstorm\FilamentKeycloakAdmin\Auth\AdminKeycloakSession;
 use Sandstorm\FilamentKeycloakAdmin\Auth\FilamentSsoTokenProvider;
 use Sandstorm\FilamentKeycloakAdmin\Auth\HeloufirAdminKeycloakSession;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakAdminEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserEventsTable;
@@ -160,6 +162,9 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         Livewire::component('keycloak-user-sessions-table', KeycloakUserSessionsTable::class);
         Livewire::component('keycloak-user-events-table', KeycloakUserEventsTable::class);
         Livewire::component('keycloak-admin-events-table', KeycloakAdminEventsTable::class);
+
+        // The single place a Keycloak read failure becomes a response — see KeycloakLoadErrorRenderer.
+        $this->app->make(Handler::class)->renderable(new KeycloakLoadErrorRenderer);
     }
 
     /**

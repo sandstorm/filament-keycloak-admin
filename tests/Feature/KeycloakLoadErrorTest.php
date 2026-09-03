@@ -5,256 +5,135 @@ declare(strict_types=1);
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Feature;
 
 use Filament\Facades\Filament;
-use Filament\Panel;
-use Livewire\Livewire;
+use Filament\Notifications\NotificationsServiceProvider;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\View\ViewException;
 use PHPUnit\Framework\Attributes\Test;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
-use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
+use RuntimeException;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi\Dto\KeycloakGroups;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakRealmApi\Dto\KeycloakUserProfile;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\CreateKeycloakUserCommand;
-use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
-use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 /**
- * Exercises the render()-level guard in {@see HandlesKeycloakLoadErrors}
- * against a fake {@see KeycloakUsersApi} instead of a live Keycloak — unlike
- * tests/Integration/KeycloakUsersE2ETest.php (which is skipped without one), this proves the render()
- * override actually catches the failure, and that the *second* call into the loader (Filament re-reading
- * the table/title after render() already returned) short-circuits instead of hitting the fake again.
+ * Exercises {@see KeycloakLoadErrorRenderer} — the single place a Keycloak read failure becomes a
+ * response, registered once as a Laravel exception renderable rather than caught by any page or
+ * component. Read failures always surface from inside Blade evaluation (a table's `records()` closure,
+ * an infolist, a nested tab component), which Laravel's compiler engine wraps in a
+ * {@see ViewException} — so these tests prove the unwrap logic against a *real* one, not a hand-built
+ * stand-in.
  */
 final class KeycloakLoadErrorTest extends TestCase
 {
-    #[Test]
-    public function the_list_page_shows_a_friendly_notice_instead_of_a_500(): void
+    /**
+     * @return list<class-string>
+     */
+    protected function getPackageProviders($app): array
     {
-        $this->usePanel();
-        $this->app->instance(KeycloakUsersApi::class, new class implements KeycloakUsersApi
-        {
-            public int $calls = 0;
-
-            public function list(?string $search, int $first, int $max, ?bool $enabled): KeycloakUsersApi\Dto\KeycloakUsers
-            {
-                $this->calls++;
-
-                throw new UnexpectedKeycloakResponseException('boom', 0, null);
-            }
-
-            public function count(?string $search, ?bool $enabled): int
-            {
-                return 0;
-            }
-
-            public function getById(KeycloakUserId $id): KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function findByUsername(string $username): ?KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function create(CreateKeycloakUserCommand $command): KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function update(KeycloakUser $user): void
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-        });
-
-        Livewire::test(KeycloakUsers::class)
-            ->assertOk()
-            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'));
-
-        $fake = $this->app->make(KeycloakUsersApi::class);
-        $this->assertSame(1, $fake->calls, 'the render()-time load and the later Blade-time table load must not both hit Keycloak');
+        return [...parent::getPackageProviders($app), NotificationsServiceProvider::class, TestPanelProvider::class];
     }
 
-    /**
-     * Unlike the list page above, this drives {@see InspectKeycloakUser::render()} directly instead of
-     * through Livewire::test(): the full page also embeds other Livewire components (identity, groups,
-     * credentials) that resolve their own real Keycloak*Api implementations and would need their own
-     * fakes/config to render — out of scope here, since this is only proving *this* page's own guard
-     * (the fake below is never seen by those siblings). render() itself only produces a lazy View, so
-     * calling it directly exercises the eager load without triggering Blade/those nested components.
-     */
     #[Test]
-    public function the_detail_page_resolves_once_and_falls_back_to_the_raw_id(): void
+    public function it_finds_the_cause_through_a_real_view_exception_and_renders_the_panel_chrome_around_one_notice(): void
     {
         $this->usePanel();
-        $fake = new class implements KeycloakUsersApi
-        {
-            public int $calls = 0;
 
-            public function list(?string $search, int $first, int $max, ?bool $enabled): KeycloakUsersApi\Dto\KeycloakUsers
-            {
-                throw new \RuntimeException('not used by this test');
-            }
+        $exception = new UnexpectedKeycloakResponseException('permission denied', 0, statusCode: 403);
+        $wrapped = $this->wrapAsViewExceptionByActuallyRenderingAFailingView($exception);
 
-            public function count(?string $search, ?bool $enabled): int
-            {
-                throw new \RuntimeException('not used by this test');
-            }
+        $response = (new KeycloakLoadErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
 
-            public function getById(KeycloakUserId $id): KeycloakUser
-            {
-                $this->calls++;
+        self::assertNotNull($response);
+        self::assertSame(503, $response->getStatusCode());
 
-                throw new UnexpectedKeycloakResponseException('boom', 0, null);
-            }
+        $body = $response->getContent();
+        self::assertStringContainsString(
+            __('filament-keycloak-admin::filament-keycloak-admin.load_error.forbidden'),
+            $body,
+        );
+        // The panel's own layout, not a bare fragment — proves the topbar/sidebar chrome is still there.
+        self::assertStringContainsString('fi-body', $body);
+        self::assertStringContainsString('fi-main', $body);
+    }
 
-            public function findByUsername(string $username): ?KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
+    #[Test]
+    public function it_ignores_exceptions_unrelated_to_keycloak(): void
+    {
+        $this->usePanel();
 
-            public function create(CreateKeycloakUserCommand $command): KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
+        $response = (new KeycloakLoadErrorRenderer)(new RuntimeException('unrelated'), Request::create('/admin/keycloak-users'));
 
-            public function update(KeycloakUser $user): void
-            {
-                throw new \RuntimeException('not used by this test');
-            }
+        self::assertNull($response);
+    }
+
+    #[Test]
+    public function it_defers_outside_a_panel_request(): void
+    {
+        Filament::setCurrentPanel(null);
+
+        $response = (new KeycloakLoadErrorRenderer)(
+            new UnexpectedKeycloakResponseException('boom', 0, statusCode: null),
+            Request::create('/console'),
+        );
+
+        self::assertNull($response);
+    }
+
+    #[Test]
+    public function it_describes_every_status_bucket(): void
+    {
+        $this->usePanel();
+
+        $describe = function (UnexpectedKeycloakResponseException $exception): string {
+            $response = (new KeycloakLoadErrorRenderer)($exception, Request::create('/admin/keycloak-users'));
+            self::assertNotNull($response);
+
+            return (string) $response->getContent();
         };
 
-        $page = new InspectKeycloakUser;
-        $page->boot($fake);
-        $page->mount('00000000-0000-0000-0000-000000000000');
-
-        $page->render();
-
-        $this->assertSame('00000000-0000-0000-0000-000000000000', $page->getTitle(), 'a failed resolve falls back to the raw id');
-        $this->assertNull($page->getSubheading());
-        $this->assertSame(1, $fake->calls, 'the render()-time load and the later getTitle()/getSubheading() loads must not both hit Keycloak');
+        self::assertStringContainsString(
+            __('filament-keycloak-admin::filament-keycloak-admin.load_error.unreachable'),
+            $describe(new UnexpectedKeycloakResponseException('boom', 0, statusCode: null)),
+        );
+        self::assertStringContainsString(
+            __('filament-keycloak-admin::filament-keycloak-admin.load_error.forbidden'),
+            $describe(new UnexpectedKeycloakResponseException('boom', 0, statusCode: 401)),
+        );
+        self::assertStringContainsString(
+            str_replace(':status', '502', __('filament-keycloak-admin::filament-keycloak-admin.load_error.server_error', ['status' => 502])),
+            $describe(new UnexpectedKeycloakResponseException('boom', 0, statusCode: 502)),
+        );
+        self::assertStringContainsString(
+            str_replace(':status', '418', __('filament-keycloak-admin::filament-keycloak-admin.load_error.unexpected', ['status' => 418])),
+            $describe(new UnexpectedKeycloakResponseException('boom', 0, statusCode: 418)),
+        );
     }
 
     /**
-     * The same render()-level guard, now on a plain Livewire\Component (not a Filament Page like the
-     * list page above) — confirms getTable()->getRecords() caching in {@see HandlesKeycloakLoadErrors}
-     * works identically regardless of which base class hosts the trait.
+     * Renders a throwaway Blade view whose only content throws $exception, exactly as a failing
+     * `records()` closure or nested tab component would mid-render — so the resulting exception is
+     * genuinely wrapped by Laravel's compiler engine the same way it would be in production, rather than
+     * a hand-built {@see ViewException} that might not match what actually gets thrown.
      */
-    #[Test]
-    public function a_detail_tab_component_shows_a_friendly_notice_instead_of_a_500(): void
+    private function wrapAsViewExceptionByActuallyRenderingAFailingView(UnexpectedKeycloakResponseException $exception): ViewException
     {
-        $this->usePanel();
-        $this->app->instance(KeycloakGroupsApi::class, new class implements KeycloakGroupsApi
-        {
-            public int $calls = 0;
+        try {
+            Blade::render('@php throw $exception; @endphp', ['exception' => $exception]);
+        } catch (ViewException $wrapped) {
+            return $wrapped;
+        }
 
-            public function getUserGroups(KeycloakUserId $userId): KeycloakGroups
-            {
-                $this->calls++;
-
-                throw new UnexpectedKeycloakResponseException('boom', 0, null);
-            }
-
-            public function listRealmGroups(?string $search = null): KeycloakGroups
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function addUserToGroup(KeycloakUserId $userId, string $groupId): void
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function removeUserFromGroup(KeycloakUserId $userId, string $groupId): void
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-        });
-
-        Livewire::test(KeycloakUserGroupsTable::class, ['userId' => '00000000-0000-0000-0000-000000000000'])
-            ->assertOk()
-            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'));
-
-        $fake = $this->app->make(KeycloakGroupsApi::class);
-        $this->assertSame(1, $fake->calls, 'the render()-time load and the later Blade-time table load must not both hit Keycloak');
+        self::fail('expected the view to throw');
     }
 
     /**
-     * Regression test: {@see KeycloakUserIdentity::mount()} used to call syncEnabledToggle() (and thus
-     * loadUser()) directly, unguarded — mount() runs before render(), so that call sat entirely outside
-     * {@see HandlesKeycloakLoadErrors::catchKeycloakLoadError()} and a denied/failed read there surfaced
-     * as an uncaught exception instead of the friendly notice. This drives the real Livewire::test() flow
-     * (mount() included, not just render()) so it actually exercises that path.
+     * {@see TestPanelProvider} registers a real panel (with real routes — the sidebar renders
+     * `getUrl()` links, which need routes to actually resolve) rather than an ad hoc one built here.
      */
-    #[Test]
-    public function the_identity_component_shows_a_friendly_notice_instead_of_a_500_from_mount(): void
-    {
-        $this->usePanel();
-        $this->app->instance(KeycloakUsersApi::class, new class implements KeycloakUsersApi
-        {
-            public int $calls = 0;
-
-            public function list(?string $search, int $first, int $max, ?bool $enabled): KeycloakUsersApi\Dto\KeycloakUsers
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function count(?string $search, ?bool $enabled): int
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function getById(KeycloakUserId $id): KeycloakUser
-            {
-                $this->calls++;
-
-                throw new UnexpectedKeycloakResponseException('boom', 0, null);
-            }
-
-            public function findByUsername(string $username): ?KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function create(CreateKeycloakUserCommand $command): KeycloakUser
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-
-            public function update(KeycloakUser $user): void
-            {
-                throw new \RuntimeException('not used by this test');
-            }
-        });
-        $this->app->instance(KeycloakRealmApi::class, new class implements KeycloakRealmApi
-        {
-            public function getUserProfile(): KeycloakUserProfile
-            {
-                throw new \RuntimeException('not used by this test — the user fetch fails first');
-            }
-        });
-
-        Livewire::test(KeycloakUserIdentity::class, ['userId' => '00000000-0000-0000-0000-000000000000'])
-            ->assertOk()
-            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'));
-
-        $fake = $this->app->make(KeycloakUsersApi::class);
-        $this->assertSame(1, $fake->calls, 'mount()\'s toggle sync and render()\'s eager load must not both hit Keycloak');
-    }
-
     private function usePanel(): void
     {
-        $panel = Panel::make()->id('load-error-test')->path('load-error-test')->plugin(FilamentKeycloakAdminPlugin::make());
-
-        Filament::registerPanel($panel);
-        Filament::setCurrentPanel($panel);
+        Filament::setCurrentPanel('admin');
+        Filament::bootCurrentPanel();
     }
 }

@@ -20,7 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
@@ -30,13 +30,11 @@ use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 use function assert;
 use function config;
 use function sprintf;
-use function view;
 
 /**
  * Security / 2FA section — the user's stored credentials (password + any OTP/WebAuthn factors) as a
- * table. An OTP/WebAuthn row present means 2FA is configured. A failed initial load is caught in
- * {@see self::render()} ({@see HandlesKeycloakLoadErrors}) and shown as the table's empty state; other
- * failures still propagate.
+ * table. An OTP/WebAuthn row present means 2FA is configured. A failed read is not caught here: it
+ * propagates to {@see KeycloakLoadErrorRenderer}.
  *
  * Per-credential removal is **whitelisted**: only second-factor credentials (OTP/WebAuthn) with a real
  * id are removable — `password` is never removable here (removing it is not a 2FA reset and could lock
@@ -45,7 +43,6 @@ use function view;
  */
 final class KeycloakUserCredentialsTable extends Component implements HasActions, HasSchemas, HasTable
 {
-    use HandlesKeycloakLoadErrors;
     use InteractsWithActions;
     use InteractsWithSchemas;
     use InteractsWithTable;
@@ -73,24 +70,22 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
 
     public function table(Table $table): Table
     {
-        return $this->keycloakLoadErrorEmptyState(
-            $table
-                ->heading('Credentials & 2FA')
-                ->records(fn (): Collection => $this->loadCredentials())
-                ->columns([
-                    TextColumn::make('type')->badge()->state(fn (KeycloakRecord $record): string => self::dto($record)->type),
-                    TextColumn::make('userLabel')->label('Label')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->userLabel)->placeholder('—'),
-                    TextColumn::make('createdAt')->label('Created')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedCreatedAt()),
-                    IconColumn::make('secondFactor')->label('Second factor')->boolean()->state(fn (KeycloakRecord $record): bool => self::dto($record)->isSecondFactor()),
-                ])
-                ->headerActions([
-                    $this->triggerPasswordResetAction(),
-                ])
-                ->recordActions([
-                    $this->removeCredentialAction(),
-                ]),
-            'No credentials stored.',
-        );
+        return $table
+            ->heading('Credentials & 2FA')
+            ->records(fn (): Collection => $this->loadCredentials())
+            ->columns([
+                TextColumn::make('type')->badge()->state(fn (KeycloakRecord $record): string => self::dto($record)->type),
+                TextColumn::make('userLabel')->label('Label')->state(fn (KeycloakRecord $record): ?string => self::dto($record)->userLabel)->placeholder('—'),
+                TextColumn::make('createdAt')->label('Created')->state(fn (KeycloakRecord $record): string => self::dto($record)->formattedCreatedAt()),
+                IconColumn::make('secondFactor')->label('Second factor')->boolean()->state(fn (KeycloakRecord $record): bool => self::dto($record)->isSecondFactor()),
+            ])
+            ->headerActions([
+                $this->triggerPasswordResetAction(),
+            ])
+            ->recordActions([
+                $this->removeCredentialAction(),
+            ])
+            ->emptyStateHeading('No credentials stored.');
     }
 
     /**
@@ -192,19 +187,10 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
     }
 
     /**
-     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
-     * table's Blade output (and by {@see self::countSecondFactors()}). Those later calls must not re-hit
-     * Keycloak once a failure is already known — {@see HandlesKeycloakLoadErrors} caches the failure, not
-     * the result.
-     *
      * @return Collection<int, KeycloakRecord>
      */
     private function loadCredentials(): Collection
     {
-        if ($this->keycloakLoadError !== null) {
-            return new Collection;
-        }
-
         $credentials = $this->credentialsApi->get(new KeycloakUserId($this->userId));
 
         return (new Collection($credentials->all()))->map(static fn (KeycloakCredential $credential, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $credential));
@@ -218,15 +204,8 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
         return $credential;
     }
 
-    /**
-     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
-     * chance to invoke {@see self::loadCredentials()} again mid-Blade-compile (see
-     * {@see HandlesKeycloakLoadErrors}).
-     */
     public function render(): View
     {
-        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
-
         return view('filament-keycloak-admin::livewire.keycloak-table');
     }
 }
