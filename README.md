@@ -152,18 +152,19 @@ beyond ids:
 
 ### HTTP outbound logging
 
-The Guzzle client used for every Keycloak Admin API call (token requests included) carries no logging
-middleware of its own and never will: token requests carry the client secret, and admin responses carry
-user PII, so redaction is a decision only your app can make correctly for its own environment. To add
-your own request/response logging, bind an implementation of `KeycloakAdminHttpHandlerStackCustomizer`:
+The Guzzle clients used for Keycloak Admin API calls and token requests carry no logging middleware of
+their own and never will: token requests carry the client secret, and admin responses carry user PII, so
+redaction is a decision only your app can make correctly for its own environment. To add your own
+request/response logging, bind an implementation of `KeycloakAdminHttpHandlerStackCustomizer`:
 
 ```php
 use GuzzleHttp\HandlerStack;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 
 class MyHandlerStackCustomizer implements KeycloakAdminHttpHandlerStackCustomizer
 {
-    public function customizeHandlerStack(HandlerStack $handlerStack): HandlerStack
+    public function customizeHandlerStack(HandlerStack $handlerStack, KeycloakHttpClientName $clientName): HandlerStack
     {
         $handlerStack->push($myLoggingMiddleware, 'http-logging');
 
@@ -174,9 +175,14 @@ class MyHandlerStackCustomizer implements KeycloakAdminHttpHandlerStackCustomize
 $this->app->bind(KeycloakAdminHttpHandlerStackCustomizer::class, MyHandlerStackCustomizer::class);
 ```
 
-When bound, the plugin resolves it and passes the client's real handler stack through
-`customizeHandlerStack()` once, while building the client — your middleware then runs on every request the
-plugin makes. Keep your middleware from logging the `Authorization` header or any response/request body.
+The plugin builds a separate Guzzle client per concern — one for the token endpoint
+(`KeycloakHttpClientName::KEYCLOAK_TOKEN_PROVIDER`) and one for the Admin REST API itself
+(`KeycloakHttpClientName::KEYCLOAK_TRANSPORT`) — and each is built lazily, the first time something
+actually needs it, not eagerly at boot. So when bound, the plugin resolves the customizer and passes each
+client's real handler stack through `customizeHandlerStack()` once per client, tagged with which one it is;
+your middleware then runs on every request that client makes. Switch on `$clientName` if you want to treat
+the two differently (e.g. only trace Admin API calls, not token requests). Keep your middleware from
+logging the `Authorization` header or any response/request body.
 
 ## Testing
 
