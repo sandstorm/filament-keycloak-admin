@@ -30,6 +30,7 @@ use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function assert;
+use function array_keys;
 use function in_array;
 use function view;
 
@@ -201,10 +202,14 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
      */
     public function setEnabled(bool $enabled): void
     {
-        $succeeded = $this->runKeycloakWrite(function () use ($enabled): void {
-            $user = $this->usersApi->getById(new KeycloakUserId($this->userId));
-            $this->usersApi->update($user->withEnabled($enabled));
-        });
+        $succeeded = $this->runKeycloakWrite(
+            'user.set_enabled',
+            ['target_user_id' => $this->userId, 'enabled' => $enabled],
+            function () use ($enabled): void {
+                $user = $this->usersApi->getById(new KeycloakUserId($this->userId));
+                $this->usersApi->update($user->withEnabled($enabled));
+            },
+        );
 
         $this->user = null;
 
@@ -267,18 +272,22 @@ final class KeycloakUserIdentity extends Component implements HasActions, HasSch
                 ...$this->attributeFields(),
             ])
             ->action(function (array $data): void {
-                $succeeded = $this->runKeycloakWrite(function () use ($data): void {
-                    $user = $this->usersApi->getById(new KeycloakUserId($this->userId))
-                        ->withFirstName($data['firstName'])
-                        ->withLastName($data['lastName'])
-                        ->withEmailVerified((bool) $data['emailVerified']);
+                $succeeded = $this->runKeycloakWrite(
+                    'user.update_identity',
+                    ['target_user_id' => $this->userId, 'updated_fields' => array_keys($data)],
+                    function () use ($data): void {
+                        $user = $this->usersApi->getById(new KeycloakUserId($this->userId))
+                            ->withFirstName($data['firstName'])
+                            ->withLastName($data['lastName'])
+                            ->withEmailVerified((bool) $data['emailVerified']);
 
-                    foreach ($this->attributeMapper()->editable() as $attribute) {
-                        $user = $user->withAttribute($attribute->name, $this->attributeMapper()->values($attribute, $data[$attribute->name] ?? null));
-                    }
+                        foreach ($this->attributeMapper()->editable() as $attribute) {
+                            $user = $user->withAttribute($attribute->name, $this->attributeMapper()->values($attribute, $data[$attribute->name] ?? null));
+                        }
 
-                    $this->usersApi->update($user);
-                });
+                        $this->usersApi->update($user);
+                    },
+                );
 
                 $this->user = null;
 
