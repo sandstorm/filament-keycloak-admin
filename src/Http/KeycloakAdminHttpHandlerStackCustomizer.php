@@ -24,5 +24,5 @@ use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
  */
 interface KeycloakAdminHttpHandlerStackCustomizer
 {
-    public function customizeHandlerStack(HandlerStack $handlerStack): HandlerStack;
+    public function customizeHandlerStack(HandlerStack $handlerStack, KeycloakHttpClientName $clientName): HandlerStack;
 }

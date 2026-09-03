@@ -19,6 +19,7 @@ use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakU
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserGroupsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserIdentity;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserSessionsTable;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
 use Sandstorm\FilamentKeycloakAdmin\Keycloak\ConfigKeycloakSettingsProvider;
 use Sandstorm\KeycloakAdminApi;
@@ -75,7 +76,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         $this->app->singleton(KeycloakTokenProvider::class, function (Application $app): KeycloakTokenProvider {
             $authMode = config('filament-keycloak-admin.auth_mode');
             $httpFactory = new HttpFactory; // PSR-17 request + stream factory
-            $client = self::buildHttpClient($app);
+            $client = self::buildHttpClient($app, KeycloakHttpClientName::KEYCLOAK_TOKEN_PROVIDER);
             return match ($authMode) {
                 'service_account' => new ServiceAccountTokenProvider(
                     $app->make(KeycloakSettingsProvider::class),
@@ -93,7 +94,7 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
 
         $this->app->singleton(KeycloakTransport::class, function (Application $app): KeycloakTransport {
             $httpFactory = new HttpFactory; // PSR-17 request + stream factory
-            $client = self::buildHttpClient($app);
+            $client = self::buildHttpClient($app, KeycloakHttpClientName::KEYCLOAK_TRANSPORT);
             return new KeycloakTransport(
                 $app->make(KeycloakSettingsProvider::class),
                 $client,
@@ -189,12 +190,12 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
      * given the chance to add its own (redaction-aware) HTTP tracing middleware to the handler stack
      * before the client is built; see that interface for how.
      */
-    private static function buildHttpClient(Application $app): Client
+    private static function buildHttpClient(Application $app, KeycloakHttpClientName $clientName): Client
     {
         $handlerStack = HandlerStack::create();
         if ($app->has(KeycloakAdminHttpHandlerStackCustomizer::class)) {
             $customizer = $app->get(KeycloakAdminHttpHandlerStackCustomizer::class);
-            $handlerStack = $customizer->customizeHandlerStack($handlerStack);
+            $handlerStack = $customizer->customizeHandlerStack($handlerStack, $clientName);
         }
 
         return new Client([

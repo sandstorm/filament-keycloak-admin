@@ -8,6 +8,7 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Psr7\Response;
 use Psr\Http\Message\RequestInterface;
+use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakHttpClientName;
 use Sandstorm\FilamentKeycloakAdmin\Http\KeycloakAdminHttpHandlerStackCustomizer;
 
 /**
@@ -23,14 +24,26 @@ final class RecordingHandlerStackCustomizer implements KeycloakAdminHttpHandlerS
     public ?HandlerStack $receivedStack = null;
 
     /**
+     * @var list<KeycloakHttpClientName>
+     */
+    public array $receivedClientNames = [];
+
+    /**
+     * @var array<string, HandlerStack> keyed by {@see KeycloakHttpClientName::name}
+     */
+    public array $receivedStacksByClientName = [];
+
+    /**
      * @var list<RequestInterface>
      */
     public array $interceptedRequests = [];
 
-    public function customizeHandlerStack(HandlerStack $handlerStack): HandlerStack
+    public function customizeHandlerStack(HandlerStack $handlerStack, KeycloakHttpClientName $clientName): HandlerStack
     {
         $this->callCount++;
         $this->receivedStack = $handlerStack;
+        $this->receivedClientNames[] = $clientName;
+        $this->receivedStacksByClientName[$clientName->name] = $handlerStack;
 
         $handlerStack->push(function (callable $handler) {
             return function (RequestInterface $request, array $options) {
