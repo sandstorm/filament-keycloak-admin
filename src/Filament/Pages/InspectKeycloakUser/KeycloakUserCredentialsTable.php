@@ -20,7 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
@@ -34,8 +34,9 @@ use function view;
 
 /**
  * Security / 2FA section — the user's stored credentials (password + any OTP/WebAuthn factors) as a
- * table. An OTP/WebAuthn row present means 2FA is configured. A failed initial load is caught and shown
- * as the table's empty state ({@see InteractsWithKeycloakReads}); other failures still propagate.
+ * table. An OTP/WebAuthn row present means 2FA is configured. A failed initial load is caught in
+ * {@see self::render()} ({@see HandlesKeycloakLoadErrors}) and shown as the table's empty state; other
+ * failures still propagate.
  *
  * Per-credential removal is **whitelisted**: only second-factor credentials (OTP/WebAuthn) with a real
  * id are removable — `password` is never removable here (removing it is not a 2FA reset and could lock
@@ -44,8 +45,8 @@ use function view;
  */
 final class KeycloakUserCredentialsTable extends Component implements HasActions, HasSchemas, HasTable
 {
+    use HandlesKeycloakLoadErrors;
     use InteractsWithActions;
-    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
     use LogsKeycloakAdminWrites;
@@ -191,18 +192,22 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
     }
 
     /**
+     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
+     * table's Blade output (and by {@see self::countSecondFactors()}). Those later calls must not re-hit
+     * Keycloak once a failure is already known — {@see HandlesKeycloakLoadErrors} caches the failure, not
+     * the result.
+     *
      * @return Collection<int, KeycloakRecord>
      */
     private function loadCredentials(): Collection
     {
-        return $this->loadFromKeycloak(
-            function (): Collection {
-                $credentials = $this->credentialsApi->get(new KeycloakUserId($this->userId));
+        if ($this->keycloakLoadError !== null) {
+            return new Collection;
+        }
 
-                return (new Collection($credentials->all()))->map(static fn (KeycloakCredential $credential, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $credential));
-            },
-            new Collection,
-        );
+        $credentials = $this->credentialsApi->get(new KeycloakUserId($this->userId));
+
+        return (new Collection($credentials->all()))->map(static fn (KeycloakCredential $credential, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $credential));
     }
 
     private static function dto(KeycloakRecord $record): KeycloakCredential
@@ -213,8 +218,15 @@ final class KeycloakUserCredentialsTable extends Component implements HasActions
         return $credential;
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
+     * chance to invoke {@see self::loadCredentials()} again mid-Blade-compile (see
+     * {@see HandlesKeycloakLoadErrors}).
+     */
     public function render(): View
     {
+        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
+
         return view('filament-keycloak-admin::livewire.keycloak-table');
     }
 }

@@ -10,45 +10,43 @@ use Filament\Tables\Table;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
 
 use function in_array;
-use function value;
 
 /**
- * Shared read-guard for every component that fetches from Keycloak to render its *own* initial view (a
- * list/detail page, or one of the detail page's tab components). A Keycloak outage or a denied read is
- * the expected, recoverable steady state for a page/section an admin can land on directly — this is the
- * scoped exception to "every failure propagates" on the read side, mirroring
- * {@see InteractsWithKeycloakWrites} on the write side. Any *other* Keycloak call an action triggers
- * later (fetching options for a picker, a write) still propagates or is guarded on its own terms.
+ * Shared render-time guard for every Keycloak page/component that fetches on its own initial load (the
+ * list page, the detail page, and each of the detail page's tab components). Livewire's own `exception()`
+ * lifecycle hook cannot help here: it only wraps `render()` itself and explicit action calls, never the
+ * Blade evaluation `render()` triggers — and that's exactly where Filament invokes a table's `records()`
+ * closure, an infolist/schema builder, or a form. A Keycloak failure thrown from there never reaches it.
+ *
+ * So each component overrides `render()` to run its own Keycloak read(s) eagerly, right here, via
+ * {@see self::catchKeycloakLoadError()} — before Filament's lazy table/schema machinery gets a chance to
+ * invoke the same read again mid-Blade-compile. That later, cached re-invocation must short-circuit on
+ * its own (checking {@see self::$keycloakLoadError}) instead of calling Keycloak a second time. This is
+ * the one guarded call site per component; any *other* Keycloak call an action triggers later (fetching
+ * options for a picker, a write) still propagates or is guarded on its own terms
+ * (see {@see InteractsWithKeycloakWrites}).
  */
-trait InteractsWithKeycloakReads
+trait HandlesKeycloakLoadErrors
 {
     private ?UnexpectedKeycloakResponseException $keycloakLoadError = null;
 
     /**
-     * Run a Keycloak read. Returns $load()'s result, or $fallback (resolved via `value()`, so a Closure
-     * is called lazily — useful when building the fallback needs the failure to already be stashed) once
-     * {@see UnexpectedKeycloakResponseException} is caught and stashed on {@see self::$keycloakLoadError}.
-     *
-     * @template T
-     *
-     * @param  callable(): T  $load
-     * @param  T | callable(): T  $fallback
-     * @return T
+     * Run the page's one Keycloak read for this request, stashing any failure on
+     * {@see self::$keycloakLoadError} instead of letting it propagate into Blade evaluation.
      */
-    protected function loadFromKeycloak(callable $load, mixed $fallback): mixed
+    protected function catchKeycloakLoadError(callable $load): void
     {
         try {
-            return $load();
+            $load();
         } catch (UnexpectedKeycloakResponseException $exception) {
             $this->keycloakLoadError = $exception;
-
-            return value($fallback);
         }
     }
 
     /**
-     * Apply the failure-aware empty state to a table backed by {@see self::loadFromKeycloak()}: $heading
-     * while reads succeed (or simply come back empty), a status-bucketed notice once one has failed.
+     * Apply the failure-aware empty state to a table backed by {@see self::catchKeycloakLoadError()}:
+     * $heading while reads succeed (or simply come back empty), a status-bucketed notice once one has
+     * failed.
      */
     protected function keycloakLoadErrorEmptyState(Table $table, string $heading): Table
     {

@@ -11,8 +11,9 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
@@ -28,13 +29,13 @@ use function assert;
  * no model-less Resource. The `$view` blade renders `{{ $this->table }}`.
  *
  * Each page maps directly onto a Keycloak Admin API query — server-side search + pagination through
- * {@see KeycloakUsersApi}, no local mirror. A failed Keycloak call is caught around the query
- * ({@see InteractsWithKeycloakReads}) and surfaced as the table's empty state instead of a 500 page or a
+ * {@see KeycloakUsersApi}, no local mirror. A failed Keycloak call is caught in {@see self::render()}
+ * ({@see HandlesKeycloakLoadErrors}) and surfaced as the table's empty state instead of a 500 page or a
  * plain empty table.
  */
 final class KeycloakUsers extends Page implements HasTable
 {
-    use InteractsWithKeycloakReads;
+    use HandlesKeycloakLoadErrors;
     use InteractsWithTable;
 
     protected string $view = 'filament-keycloak-admin::filament.pages.keycloak-users';
@@ -89,6 +90,18 @@ final class KeycloakUsers extends Page implements HasTable
         return FilamentKeycloakAdminPlugin::get()->getNavigationLabel();
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
+     * chance to invoke {@see self::loadUsers()} again mid-Blade-compile (see
+     * {@see HandlesKeycloakLoadErrors}).
+     */
+    public function render(): View
+    {
+        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
+
+        return parent::render();
+    }
+
     public function table(Table $table): Table
     {
         return $this->keycloakLoadErrorEmptyState(
@@ -108,24 +121,28 @@ final class KeycloakUsers extends Page implements HasTable
         );
     }
 
+    /**
+     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
+     * table's Blade output. That second call must not re-hit Keycloak once a failure is already known —
+     * {@see HandlesKeycloakLoadErrors} caches the failure, not the result.
+     */
     private function loadUsers(int $page, int $recordsPerPage, ?string $search): LengthAwarePaginator
     {
-        return $this->loadFromKeycloak(
-            function () use ($page, $recordsPerPage, $search): LengthAwarePaginator {
-                $first = ($page - 1) * $recordsPerPage;
+        if ($this->keycloakLoadError !== null) {
+            return new LengthAwarePaginator([], 0, $recordsPerPage, $page);
+        }
 
-                $users = $this->usersApi->list($search, $first, $recordsPerPage, null);
-                $total = $this->usersApi->count($search, null);
+        $first = ($page - 1) * $recordsPerPage;
 
-                $records = array_map(
-                    static fn (KeycloakUser $user): KeycloakRecord => KeycloakRecord::for($user->id->value, $user),
-                    $users->all(),
-                );
+        $users = $this->usersApi->list($search, $first, $recordsPerPage, null);
+        $total = $this->usersApi->count($search, null);
 
-                return new LengthAwarePaginator($records, $total, $recordsPerPage, $page);
-            },
-            new LengthAwarePaginator([], 0, $recordsPerPage, $page),
+        $records = array_map(
+            static fn (KeycloakUser $user): KeycloakRecord => KeycloakRecord::for($user->id->value, $user),
+            $users->all(),
         );
+
+        return new LengthAwarePaginator($records, $total, $recordsPerPage, $page);
     }
 
     private static function user(KeycloakRecord $record): KeycloakUser

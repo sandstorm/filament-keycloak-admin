@@ -11,7 +11,8 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Illuminate\Contracts\View\View;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakAdminEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserEventsTable;
@@ -33,14 +34,14 @@ use function assert;
  *
  * The page fetches almost nothing itself — it is a **tab orchestrator**: {@see self::detailSchema()}
  * builds Filament `Tabs`, each embedding one or more child Livewire components that own their own fetch
- * and degrade independently on a failed read ({@see InteractsWithKeycloakReads}). The page's own read —
- * resolving the user for the page title/subheading — is guarded the same way: a failure falls back to
- * the raw id for the title and adds a banner above the tabs, but still renders them (each section makes
- * its own, possibly different, attempt).
+ * and degrade independently on a failed read. The page's own read — resolving the user for the page
+ * title/subheading — is caught in {@see self::render()} ({@see HandlesKeycloakLoadErrors}): a failure
+ * falls back to the raw id for the title and adds a banner above the tabs, but still renders them (each
+ * section makes its own, possibly different, attempt).
  */
 final class InspectKeycloakUser extends Page
 {
-    use InteractsWithKeycloakReads;
+    use HandlesKeycloakLoadErrors;
 
     protected static bool $shouldRegisterNavigation = false;
 
@@ -77,6 +78,18 @@ final class InspectKeycloakUser extends Page
         $this->userId = $userId;
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before {@see self::getTitle()},
+     * {@see self::getSubheading()} and {@see self::detailSchema()} get a chance to invoke
+     * {@see self::resolveUser()} again mid-Blade-compile (see {@see HandlesKeycloakLoadErrors}).
+     */
+    public function render(): View
+    {
+        $this->catchKeycloakLoadError(fn (): ?KeycloakUser => $this->resolveUser());
+
+        return parent::render();
+    }
+
     public function getTitle(): string
     {
         $user = $this->resolveUser();
@@ -89,16 +102,23 @@ final class InspectKeycloakUser extends Page
         return $this->resolveUser()?->email;
     }
 
+    /**
+     * Called once from {@see self::render()}'s eager load; called again by {@see self::getTitle()},
+     * {@see self::getSubheading()} and {@see self::detailSchema()} while Blade compiles. Those later
+     * calls must not re-hit Keycloak once a failure is already known — {@see HandlesKeycloakLoadErrors}
+     * caches the failure, not the result.
+     */
     private function resolveUser(): ?KeycloakUser
     {
         if ($this->resolvedUser !== false) {
             return $this->resolvedUser;
         }
 
-        return $this->resolvedUser = $this->loadFromKeycloak(
-            fn (): KeycloakUser => $this->usersApi->getById(new KeycloakUserId((string) $this->userId)),
-            null,
-        );
+        if ($this->keycloakLoadError !== null) {
+            return $this->resolvedUser = null;
+        }
+
+        return $this->resolvedUser = $this->usersApi->getById(new KeycloakUserId((string) $this->userId));
     }
 
     /**

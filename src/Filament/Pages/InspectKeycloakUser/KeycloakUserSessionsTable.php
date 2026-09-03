@@ -19,7 +19,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi;
@@ -33,13 +33,13 @@ use function view;
  * Active sessions section — the user's currently-live sessions as a table (empty once logged
  * out/expired, which is normal). A "Log out all sessions" header action force-signs-out everywhere,
  * then re-reads the table and broadcasts the cross-tab signal (a logout shows up in user events too —
- * plan §7.2). A failed initial load is caught and shown as the table's empty state
- * ({@see InteractsWithKeycloakReads}); other failures still propagate.
+ * plan §7.2). A failed initial load is caught in {@see self::render()} ({@see HandlesKeycloakLoadErrors})
+ * and shown as the table's empty state; other failures still propagate.
  */
 final class KeycloakUserSessionsTable extends Component implements HasActions, HasSchemas, HasTable
 {
+    use HandlesKeycloakLoadErrors;
     use InteractsWithActions;
-    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
     use LogsKeycloakAdminWrites;
@@ -109,18 +109,21 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
     }
 
     /**
+     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
+     * table's Blade output. That second call must not re-hit Keycloak once a failure is already known —
+     * {@see HandlesKeycloakLoadErrors} caches the failure, not the result.
+     *
      * @return Collection<int, KeycloakRecord>
      */
     private function loadSessions(): Collection
     {
-        return $this->loadFromKeycloak(
-            function (): Collection {
-                $sessions = $this->sessionsApi->getSessions(new KeycloakUserId($this->userId));
+        if ($this->keycloakLoadError !== null) {
+            return new Collection;
+        }
 
-                return (new Collection($sessions->all()))->map(static fn (KeycloakSession $session, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $session));
-            },
-            new Collection,
-        );
+        $sessions = $this->sessionsApi->getSessions(new KeycloakUserId($this->userId));
+
+        return (new Collection($sessions->all()))->map(static fn (KeycloakSession $session, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $session));
     }
 
     private static function dto(KeycloakRecord $record): KeycloakSession
@@ -131,8 +134,15 @@ final class KeycloakUserSessionsTable extends Component implements HasActions, H
         return $session;
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
+     * chance to invoke {@see self::loadSessions()} again mid-Blade-compile (see
+     * {@see HandlesKeycloakLoadErrors}).
+     */
     public function render(): View
     {
+        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
+
         return view('filament-keycloak-admin::livewire.keycloak-table');
     }
 }

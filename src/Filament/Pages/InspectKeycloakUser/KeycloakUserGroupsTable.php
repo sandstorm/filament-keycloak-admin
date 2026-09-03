@@ -20,7 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
@@ -37,14 +37,14 @@ use function view;
  * Groups section — the realm groups the user belongs to, as a table. The per-user membership list is
  * small, so it renders whole (no pagination). An "Add to group" header action (picker of groups the
  * user is not yet in) and a per-row "Remove" mutate membership one group per call, then re-read the
- * table and broadcast the shared cross-tab signal (plan §7.2). A failed initial load is caught and shown
- * as the table's empty state ({@see InteractsWithKeycloakReads}); other failures (e.g. from the "Add to
- * group" picker or a write) still propagate.
+ * table and broadcast the shared cross-tab signal (plan §7.2). A failed initial load is caught in
+ * {@see self::render()} ({@see HandlesKeycloakLoadErrors}) and shown as the table's empty state; other
+ * failures (e.g. from the "Add to group" picker or a write) still propagate.
  */
 final class KeycloakUserGroupsTable extends Component implements HasActions, HasSchemas, HasTable
 {
+    use HandlesKeycloakLoadErrors;
     use InteractsWithActions;
-    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
     use LogsKeycloakAdminWrites;
@@ -190,18 +190,21 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
     }
 
     /**
+     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
+     * table's Blade output. That second call must not re-hit Keycloak once a failure is already known —
+     * {@see HandlesKeycloakLoadErrors} caches the failure, not the result.
+     *
      * @return Collection<int, KeycloakRecord>
      */
     private function loadGroups(): Collection
     {
-        return $this->loadFromKeycloak(
-            function (): Collection {
-                $groups = $this->groupsApi->getUserGroups(new KeycloakUserId($this->userId));
+        if ($this->keycloakLoadError !== null) {
+            return new Collection;
+        }
 
-                return (new Collection($groups->all()))->map(static fn (KeycloakGroup $group, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $group));
-            },
-            new Collection,
-        );
+        $groups = $this->groupsApi->getUserGroups(new KeycloakUserId($this->userId));
+
+        return (new Collection($groups->all()))->map(static fn (KeycloakGroup $group, int $index): KeycloakRecord => KeycloakRecord::for((string) $index, $group));
     }
 
     private static function dto(KeycloakRecord $record): KeycloakGroup
@@ -212,8 +215,15 @@ final class KeycloakUserGroupsTable extends Component implements HasActions, Has
         return $group;
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
+     * chance to invoke {@see self::loadGroups()} again mid-Blade-compile (see
+     * {@see HandlesKeycloakLoadErrors}).
+     */
     public function render(): View
     {
+        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
+
         return view('filament-keycloak-admin::livewire.keycloak-table');
     }
 }

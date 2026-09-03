@@ -18,7 +18,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\Paginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakReads;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\HandlesKeycloakLoadErrors;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakUserEvent;
@@ -30,16 +30,17 @@ use function view;
 /**
  * User events section — every event Keycloak recorded for this user (LOGIN, LOGIN_ERROR,
  * UPDATE_PASSWORD, …) as a table mirroring Keycloak's own list. Error is surfaced in the event badge;
- * full detail sits behind the row Details modal. A failed initial load is caught and shown as the
- * table's empty state ({@see InteractsWithKeycloakReads}); other failures still propagate.
+ * full detail sits behind the row Details modal. A failed initial load is caught in {@see self::render()}
+ * ({@see HandlesKeycloakLoadErrors}) and shown as the table's empty state; other failures still
+ * propagate.
  *
  * Keycloak's `/events` endpoint has no count, so pagination is "simple" (Prev/Next) via a `perPage + 1`
  * probe.
  */
 final class KeycloakUserEventsTable extends Component implements HasActions, HasSchemas, HasTable
 {
+    use HandlesKeycloakLoadErrors;
     use InteractsWithActions;
-    use InteractsWithKeycloakReads;
     use InteractsWithSchemas;
     use InteractsWithTable;
 
@@ -92,22 +93,24 @@ final class KeycloakUserEventsTable extends Component implements HasActions, Has
 
     /**
      * Fetch one page, requesting one extra row so the simple paginator knows whether a next page exists.
+     * Called once from {@see self::render()}'s eager load; called again by Filament while compiling the
+     * table's Blade output. That second call must not re-hit Keycloak once a failure is already known —
+     * {@see HandlesKeycloakLoadErrors} caches the failure, not the result.
      */
     private function loadEvents(int $page, int $recordsPerPage): Paginator
     {
-        return $this->loadFromKeycloak(
-            function () use ($page, $recordsPerPage): Paginator {
-                $first = ($page - 1) * $recordsPerPage;
+        if ($this->keycloakLoadError !== null) {
+            return new Paginator([], $recordsPerPage, $page);
+        }
 
-                $records = [];
-                foreach ($this->eventsApi->getUserEvents(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
-                    $records[] = KeycloakRecord::for((string) ($first + $index), $event);
-                }
+        $first = ($page - 1) * $recordsPerPage;
 
-                return new Paginator($records, $recordsPerPage, $page);
-            },
-            new Paginator([], $recordsPerPage, $page),
-        );
+        $records = [];
+        foreach ($this->eventsApi->getUserEvents(new KeycloakUserId($this->userId), $first, $recordsPerPage + 1) as $index => $event) {
+            $records[] = KeycloakRecord::for((string) ($first + $index), $event);
+        }
+
+        return new Paginator($records, $recordsPerPage, $page);
     }
 
     /**
@@ -143,8 +146,15 @@ final class KeycloakUserEventsTable extends Component implements HasActions, Has
         return $event;
     }
 
+    /**
+     * Triggers this request's one Keycloak read up front, before Filament's table machinery gets a
+     * chance to invoke {@see self::loadEvents()} again mid-Blade-compile (see
+     * {@see HandlesKeycloakLoadErrors}).
+     */
     public function render(): View
     {
+        $this->catchKeycloakLoadError(fn (): mixed => $this->getTable()->getRecords());
+
         return view('filament-keycloak-admin::livewire.keycloak-table');
     }
 }
