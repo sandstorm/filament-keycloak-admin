@@ -12,9 +12,15 @@ use Illuminate\View\ViewException;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
+use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
+use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
 use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\CreateKeycloakUserCommand;
+use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\KeycloakUser;
+use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 /**
  * Exercises {@see KeycloakLoadErrorRenderer} — the single place a Keycloak read failure becomes a
@@ -32,6 +38,57 @@ final class KeycloakLoadErrorTest extends TestCase
     protected function getPackageProviders($app): array
     {
         return [...parent::getPackageProviders($app), NotificationsServiceProvider::class, TestPanelProvider::class];
+    }
+
+    /**
+     * The one test that exercises the *actual* registration in
+     * {@see FilamentKeycloakAdminServiceProvider::packageBooted()} —
+     * every other test in this file calls {@see KeycloakLoadErrorRenderer} directly, which proves the
+     * renderer's own logic but not that Laravel's exception handler actually dispatches to it. Resolving
+     * the wrong exception-handler instance to register against (a fresh, unused one instead of the real
+     * singleton the kernel renders through) would pass every other test here and still 500 in production —
+     * this is the regression that ships the fix for.
+     */
+    #[Test]
+    public function a_real_http_request_reaches_the_renderer_through_laravels_actual_exception_handling(): void
+    {
+        $this->app->instance(KeycloakUsersApi::class, new class implements KeycloakUsersApi
+        {
+            public function list(?string $search, int $first, int $max, ?bool $enabled): KeycloakUsersApi\Dto\KeycloakUsers
+            {
+                throw new UnexpectedKeycloakResponseException('boom', 0, statusCode: 403);
+            }
+
+            public function count(?string $search, ?bool $enabled): int
+            {
+                return 0;
+            }
+
+            public function getById(KeycloakUserId $id): KeycloakUser
+            {
+                throw new RuntimeException('not used by this test');
+            }
+
+            public function findByUsername(string $username): ?KeycloakUser
+            {
+                throw new RuntimeException('not used by this test');
+            }
+
+            public function create(CreateKeycloakUserCommand $command): KeycloakUser
+            {
+                throw new RuntimeException('not used by this test');
+            }
+
+            public function update(KeycloakUser $user): void
+            {
+                throw new RuntimeException('not used by this test');
+            }
+        });
+
+        $response = $this->get(KeycloakUsers::getUrl(panel: 'admin'));
+
+        $response->assertStatus(503);
+        $response->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.forbidden'));
     }
 
     #[Test]

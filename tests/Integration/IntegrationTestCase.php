@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandstorm\FilamentKeycloakAdmin\Tests\Integration;
 
 use Filament\Facades\Filament;
+use Filament\Notifications\NotificationsServiceProvider;
 use GuzzleHttp\Client;
 use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
@@ -51,7 +52,7 @@ abstract class IntegrationTestCase extends TestCase
      */
     protected function getPackageProviders($app): array
     {
-        return [...parent::getPackageProviders($app), TestPanelProvider::class];
+        return [...parent::getPackageProviders($app), NotificationsServiceProvider::class, TestPanelProvider::class];
     }
 
     public function getEnvironmentSetUp($app): void

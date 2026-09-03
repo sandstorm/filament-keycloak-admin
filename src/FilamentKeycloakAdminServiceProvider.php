@@ -7,6 +7,7 @@ namespace Sandstorm\FilamentKeycloakAdmin;
 use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\HttpFactory;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Foundation\Exceptions\Handler;
 use Livewire\Livewire;
@@ -164,7 +165,13 @@ class FilamentKeycloakAdminServiceProvider extends PackageServiceProvider
         Livewire::component('keycloak-admin-events-table', KeycloakAdminEventsTable::class);
 
         // The single place a Keycloak read failure becomes a response — see KeycloakLoadErrorRenderer.
-        $this->app->make(Handler::class)->renderable(new KeycloakLoadErrorRenderer);
+        // Must resolve the *contract* (the actual singleton the kernel renders exceptions through) —
+        // `Handler::class` itself isn't bound to anything, so `make()`ing it directly builds a
+        // throwaway instance that never sees a real request's exceptions.
+        $handler = $this->app->make(ExceptionHandler::class);
+        if ($handler instanceof Handler) {
+            $handler->renderable(new KeycloakLoadErrorRenderer);
+        }
     }
 
     /**

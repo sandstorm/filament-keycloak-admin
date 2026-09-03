@@ -45,19 +45,23 @@ final class KeycloakUsersE2ETest extends IntegrationTestCase
     }
 
     /**
-     * The list page itself does not propagate: a rejected service-account grant (a real non-2xx from
-     * Keycloak's token endpoint, forced here with a corrupted secret) is caught around the query and
-     * rendered as the table's empty state instead of a 500 page. The exact status Keycloak answers a bad
-     * secret with isn't asserted here — only that the page degrades gracefully rather than erroring.
+     * A rejected service-account grant (a real non-2xx from Keycloak's token endpoint, forced here with a
+     * corrupted secret) does not propagate to a 500 page: {@see
+     * \Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer} catches it and renders a
+     * friendly notice instead. Nothing in the page itself catches this any more (see §8 of the plan doc),
+     * so this has to be a real HTTP request through the panel route — `Livewire::test()` calls the
+     * component directly and never reaches Laravel's exception handling, where the renderer is
+     * registered.
      */
     #[Test]
     public function the_list_shows_a_friendly_notice_instead_of_a_500_when_keycloak_denies_the_request(): void
     {
         config()->set('filament-keycloak-admin.connection.client_secret', 'not-the-real-secret');
 
-        Livewire::test(KeycloakUsers::class)
-            ->assertOk()
-            ->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'))
-            ->assertDontSee('jane');
+        $response = $this->get(KeycloakUsers::getUrl(panel: 'admin'));
+
+        $response->assertStatus(503);
+        $response->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'));
+        $response->assertDontSee('jane');
     }
 }
