@@ -10,6 +10,7 @@ use Illuminate\Http\Response;
 use Illuminate\View\ViewException;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Concerns\InteractsWithKeycloakWrites;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLoggerFactory;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
 use Throwable;
 
@@ -55,10 +56,21 @@ final class KeycloakLoadErrorRenderer
             return null;
         }
 
+        KeycloakAdminLoggerFactory::resolve(app())->error(
+            'Keycloak load error',
+            [
+                'admin_id' => Filament::auth()->id(),
+                'exception' => $exception,
+            ]
+        );
+
+        // IMPORTANT:
+        // Respond 200 status code here, otherwise filament will not initialize
+        // alpine.js and the page JS will break.
         return response()->view('filament-keycloak-admin::filament.pages.keycloak-load-error', [
             'heading' => __('filament-keycloak-admin::filament-keycloak-admin.load_error.heading'),
             'message' => self::describe($cause),
-        ], 503);
+        ], 200);
     }
 
     private static function unwrap(Throwable $exception): ?UnexpectedKeycloakResponseException

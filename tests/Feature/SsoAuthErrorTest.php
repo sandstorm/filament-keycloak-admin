@@ -77,7 +77,10 @@ final class SsoAuthErrorTest extends TestCase
 
         $response = $this->get(KeycloakUsers::getUrl(panel: 'admin'));
 
-        $response->assertStatus(401);
+        // 200, not 401: Filament only boots Alpine on the client for a 2xx response, and this page's
+        // navigation/search need Alpine to work. The real failure is still logged explicitly elsewhere,
+        // independently of this HTTP status code.
+        $response->assertStatus(200);
         $response->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.sso_auth_error.message'));
     }
 
@@ -92,7 +95,8 @@ final class SsoAuthErrorTest extends TestCase
         $response = (new SsoAuthErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
 
         self::assertNotNull($response);
-        self::assertSame(401, $response->getStatusCode());
+        // 200, not 401 — see the comment on SsoAuthErrorRenderer for why.
+        self::assertSame(200, $response->getStatusCode());
 
         $body = $response->getContent();
         self::assertStringContainsString(

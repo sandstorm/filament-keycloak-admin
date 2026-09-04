@@ -87,7 +87,10 @@ final class KeycloakLoadErrorTest extends TestCase
 
         $response = $this->get(KeycloakUsers::getUrl(panel: 'admin'));
 
-        $response->assertStatus(503);
+        // 200, not 503: Filament only boots Alpine on the client for a 2xx response, and this page's
+        // navigation/search need Alpine to work. The real failure is still logged explicitly elsewhere,
+        // independently of this HTTP status code.
+        $response->assertStatus(200);
         $response->assertSee(__('filament-keycloak-admin::filament-keycloak-admin.load_error.forbidden'));
     }
 
@@ -102,7 +105,8 @@ final class KeycloakLoadErrorTest extends TestCase
         $response = (new KeycloakLoadErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
 
         self::assertNotNull($response);
-        self::assertSame(503, $response->getStatusCode());
+        // 200, not 503 — see the comment on KeycloakLoadErrorRenderer for why.
+        self::assertSame(200, $response->getStatusCode());
 
         $body = $response->getContent();
         self::assertStringContainsString(

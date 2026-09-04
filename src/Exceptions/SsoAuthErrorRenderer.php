@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Sandstorm\FilamentKeycloakAdmin\Auth\FilamentSsoTokenProvider;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLoggerFactory;
 use Throwable;
 
 use function response;
@@ -41,10 +42,23 @@ final class SsoAuthErrorRenderer
             return null;
         }
 
+        // Log warning level, as this is most likely
+        // NOT a programming / configuration problem.
+        KeycloakAdminLoggerFactory::resolve(app())->warning(
+            'Keycloak admin SSO auth error',
+            [
+                'admin_id' => Filament::auth()->id(),
+                'exception' => $exception,
+            ]
+        );
+
+        // IMPORTANT:
+        // Respond 200 status code here, otherwise filament will not initialize
+        // alpine.js and the page JS will break.
         return response()->view('filament-keycloak-admin::filament.pages.keycloak-load-error', [
             'heading' => __('filament-keycloak-admin::filament-keycloak-admin.sso_auth_error.heading'),
             'message' => __('filament-keycloak-admin::filament-keycloak-admin.sso_auth_error.message'),
-        ], 401);
+        ], 200);
     }
 
     private static function unwrap(Throwable $exception): ?SsoAuthException
