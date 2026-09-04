@@ -21,7 +21,7 @@ return [
     // Shared across every section that reads Keycloak in `sso` (act-as-user) mode — see
     // Auth\FilamentSsoTokenProvider.
     'sso_auth_error' => [
-        'heading' => 'Your Keycloak session is no longer valid',
-        'message' => 'Your Keycloak session could not be found or renewed. Please log out and log in again.',
+        'heading' => 'Invalid Keycloak SSO session',
+        'message' => 'Your Keycloak SSO session could not be found, renewed or is no longer valid.',
     ],
 ];
