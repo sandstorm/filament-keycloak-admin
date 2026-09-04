@@ -15,7 +15,11 @@ use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Exceptions\SsoAuthErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Exceptions\SsoAuthException;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLogger;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLoggerFactory;
 use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Support\FakeAdminUser;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Support\InMemoryLogger;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi\Dto\CreateKeycloakUserCommand;
@@ -108,6 +112,45 @@ final class SsoAuthErrorTest extends TestCase
         self::assertStringContainsString('fi-main', $body);
     }
 
+    /**
+     * An sso auth failure is most likely just an expired admin session rather than a system problem, so
+     * it logs at `warning` — unlike a Keycloak read failure
+     * ({@see KeycloakLoadErrorRenderer}), which logs at
+     * `error`. Logging is optional — see {@see KeycloakAdminLoggerFactory} — so absence of a binding must
+     * not break the renderer; that is covered separately below.
+     */
+    #[Test]
+    public function it_logs_the_failure_at_warning_level_with_the_admin_id(): void
+    {
+        $this->usePanel();
+        $logger = $this->bindLogger();
+        Filament::auth()->setUser(new FakeAdminUser(['id' => 7]));
+
+        $exception = new SsoAuthException('the refresh produced nothing usable', 1755600002);
+        $wrapped = $this->wrapAsViewExceptionByActuallyRenderingAFailingView($exception);
+
+        (new SsoAuthErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
+
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+        self::assertSame('Keycloak admin SSO auth error', $logger->records[0]['message']);
+        self::assertSame(7, $logger->records[0]['context']['admin_id']);
+        self::assertSame($wrapped, $logger->records[0]['context']['exception']);
+    }
+
+    #[Test]
+    public function it_does_not_log_or_throw_when_no_logger_is_bound(): void
+    {
+        $this->usePanel();
+
+        $exception = new SsoAuthException('no session', 1755600001);
+        $wrapped = $this->wrapAsViewExceptionByActuallyRenderingAFailingView($exception);
+
+        $response = (new SsoAuthErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
+
+        self::assertNotNull($response);
+    }
+
     #[Test]
     public function it_ignores_exceptions_unrelated_to_sso_auth(): void
     {
@@ -156,5 +199,13 @@ final class SsoAuthErrorTest extends TestCase
     {
         Filament::setCurrentPanel('admin');
         Filament::bootCurrentPanel();
+    }
+
+    private function bindLogger(): InMemoryLogger
+    {
+        $logger = new InMemoryLogger;
+        $this->app->instance(KeycloakAdminLogger::class, $logger);
+
+        return $logger;
     }
 }

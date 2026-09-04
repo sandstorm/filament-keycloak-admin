@@ -12,9 +12,14 @@ use Illuminate\View\ViewException;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\SsoAuthErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\KeycloakUsers;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminServiceProvider;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLogger;
+use Sandstorm\FilamentKeycloakAdmin\Logging\KeycloakAdminLoggerFactory;
 use Sandstorm\FilamentKeycloakAdmin\Tests\Fixtures\TestPanelProvider;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Support\FakeAdminUser;
+use Sandstorm\FilamentKeycloakAdmin\Tests\Support\InMemoryLogger;
 use Sandstorm\FilamentKeycloakAdmin\Tests\TestCase;
 use Sandstorm\KeycloakAdminApi\Connection\UnexpectedKeycloakResponseException;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
@@ -118,6 +123,45 @@ final class KeycloakLoadErrorTest extends TestCase
         self::assertStringContainsString('fi-main', $body);
     }
 
+    /**
+     * A read failure is an unexpected condition worth an operator's attention, so it logs at `error` —
+     * unlike an sso auth failure ({@see SsoAuthErrorRenderer}),
+     * which is most likely just an expired admin session rather than a system problem, and logs at
+     * `warning`. Logging is optional — see {@see KeycloakAdminLoggerFactory} — so absence of a binding
+     * must not break the renderer; that is covered separately below.
+     */
+    #[Test]
+    public function it_logs_the_failure_at_error_level_with_the_admin_id(): void
+    {
+        $this->usePanel();
+        $logger = $this->bindLogger();
+        Filament::auth()->setUser(new FakeAdminUser(['id' => 42]));
+
+        $exception = new UnexpectedKeycloakResponseException('permission denied', 0, statusCode: 403);
+        $wrapped = $this->wrapAsViewExceptionByActuallyRenderingAFailingView($exception);
+
+        (new KeycloakLoadErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
+
+        self::assertCount(1, $logger->records);
+        self::assertSame('error', $logger->records[0]['level']);
+        self::assertSame('Keycloak load error', $logger->records[0]['message']);
+        self::assertSame(42, $logger->records[0]['context']['admin_id']);
+        self::assertSame($wrapped, $logger->records[0]['context']['exception']);
+    }
+
+    #[Test]
+    public function it_does_not_log_or_throw_when_no_logger_is_bound(): void
+    {
+        $this->usePanel();
+
+        $exception = new UnexpectedKeycloakResponseException('permission denied', 0, statusCode: 403);
+        $wrapped = $this->wrapAsViewExceptionByActuallyRenderingAFailingView($exception);
+
+        $response = (new KeycloakLoadErrorRenderer)($wrapped, Request::create('/admin/keycloak-users'));
+
+        self::assertNotNull($response);
+    }
+
     #[Test]
     public function it_ignores_exceptions_unrelated_to_keycloak(): void
     {
@@ -196,5 +240,13 @@ final class KeycloakLoadErrorTest extends TestCase
     {
         Filament::setCurrentPanel('admin');
         Filament::bootCurrentPanel();
+    }
+
+    private function bindLogger(): InMemoryLogger
+    {
+        $logger = new InMemoryLogger;
+        $this->app->instance(KeycloakAdminLogger::class, $logger);
+
+        return $logger;
     }
 }

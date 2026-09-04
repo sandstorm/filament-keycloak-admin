@@ -39,8 +39,7 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
 
     public function __construct(
         private readonly AdminKeycloakSession $session,
-    ) {
-    }
+    ) {}
 
     public function currentBearer(): string
     {
@@ -84,7 +83,7 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
         }
 
         $payload = json_decode(self::base64UrlDecode($parts[1]), true);
-        if (!is_array($payload) || !is_int($payload['exp'] ?? null)) {
+        if (! is_array($payload) || ! is_int($payload['exp'] ?? null)) {
             return false;
         }
 
@@ -95,6 +94,6 @@ final class FilamentSsoTokenProvider implements KeycloakTokenProvider
     {
         $padded = $segment . str_repeat('=', (4 - strlen($segment) % 4) % 4);
 
-        return (string)base64_decode(strtr($padded, '-_', '+/'), true);
+        return (string) base64_decode(strtr($padded, '-_', '+/'), true);
     }
 }
