@@ -33,7 +33,10 @@ use function response;
  *
  * The response is built from the panel's own layout view directly, not `<x-filament-panels::page>` (which
  * needs a live Filament page component bound as `$this`) — so the topbar/sidebar render exactly as they
- * normally would, while the content area becomes one generic notice. Nothing here tries to still show
+ * normally would, while the content area becomes one generic notice. The view forces `.fi-main-ctn`
+ * visible via a CSS override, since Filament otherwise only reveals it once Alpine runs a JS-driven
+ * opacity toggle — which never happens here, this response being rendered from inside Laravel's
+ * exception handler rather than a normal page request/response cycle. Nothing here tries to still show
  * whatever table or infolist was mid-render when the failure happened.
  */
 final class KeycloakLoadErrorRenderer

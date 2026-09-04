@@ -102,6 +102,9 @@ final class SsoAuthErrorTest extends TestCase
         // The panel's own layout, not a bare fragment — proves the topbar/sidebar chrome is still there.
         self::assertStringContainsString('fi-body', $body);
         self::assertStringContainsString('fi-main', $body);
+        // The CSS override that keeps the content area visible without depending on Alpine ever running.
+        self::assertStringContainsString('.fi-main-ctn', $body);
+        self::assertStringContainsString('opacity: 1 !important', $body);
     }
 
     #[Test]
