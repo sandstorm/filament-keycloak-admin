@@ -18,18 +18,19 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Pagination\Paginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakUserEvent;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function assert;
-use function view;
 
 /**
  * User events section — every event Keycloak recorded for this user (LOGIN, LOGIN_ERROR,
  * UPDATE_PASSWORD, …) as a table mirroring Keycloak's own list. Error is surfaced in the event badge;
- * full detail sits behind the row Details modal. Every failure propagates (plan §8).
+ * full detail sits behind the row Details modal. A failed read is not caught here: it propagates to
+ * {@see KeycloakLoadErrorRenderer}.
  *
  * Keycloak's `/events` endpoint has no count, so pagination is "simple" (Prev/Next) via a `perPage + 1`
  * probe.
@@ -81,7 +82,8 @@ final class KeycloakUserEventsTable extends Component implements HasActions, Has
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
                     ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
-            ]);
+            ])
+            ->emptyStateHeading('No user events recorded.');
     }
 
     /**

@@ -24,12 +24,12 @@ use Sandstorm\KeycloakAdminApi\Features\KeycloakEventsApi\Dto\KeycloakAdminEvent
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function assert;
-use function view;
 
 /**
  * Admin history section — administrative actions performed ON this user (who changed what) as a table.
- * Full detail (auth client/ip, error, JSON representation) sits behind the row Details modal. Every
- * failure propagates (plan §8).
+ * Full detail (auth client/ip, error, JSON representation) sits behind the row Details modal. A failed
+ * read is not caught here: it propagates to {@see
+ * \Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer}.
  *
  * Keycloak's `/admin-events` endpoint has no count, so pagination is "simple" (Prev/Next) via a
  * `perPage + 1` probe.
@@ -84,7 +84,8 @@ final class KeycloakAdminEventsTable extends Component implements HasActions, Ha
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
                     ->infolist(fn (KeycloakRecord $record): array => $this->detailEntries(self::dto($record))),
-            ]);
+            ])
+            ->emptyStateHeading('No admin events recorded.');
     }
 
     /**

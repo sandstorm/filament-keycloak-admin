@@ -1,6 +1,7 @@
 {
     "realm": "test-realm-fgap",
     "enabled": true,
+    "sslRequired": "none",
     "adminPermissionsEnabled": true,
     "eventsEnabled": true,
     "eventsListeners": ["jboss-logging"],

@@ -12,6 +12,7 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\FilamentKeycloakAdminPlugin;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakUsersApi;
@@ -27,8 +28,9 @@ use function assert;
  * no model-less Resource. The `$view` blade renders `{{ $this->table }}`.
  *
  * Each page maps directly onto a Keycloak Admin API query — server-side search + pagination through
- * {@see KeycloakUsersApi}, no local mirror. Every failure (including 401/403) propagates to the
- * framework error page (plan §8); the page catches nothing.
+ * {@see KeycloakUsersApi}, no local mirror. A failed Keycloak call is not caught here: it propagates to
+ * {@see KeycloakLoadErrorRenderer}, the one place a read
+ * failure becomes a friendly response instead of a 500.
  */
 final class KeycloakUsers extends Page implements HasTable
 {
@@ -99,7 +101,8 @@ final class KeycloakUsers extends Page implements HasTable
                 IconColumn::make('enabled')->boolean()->state(fn (KeycloakRecord $record): bool => self::user($record)->enabled),
             ])
             // The whole row links to the user's stable, shareable detail address.
-            ->recordUrl(fn (KeycloakRecord $record): string => InspectKeycloakUser::getUrl(['userId' => $record->getKey()]));
+            ->recordUrl(fn (KeycloakRecord $record): string => InspectKeycloakUser::getUrl(['userId' => $record->getKey()]))
+            ->emptyStateHeading(__('filament-keycloak-admin::filament-keycloak-admin.users.empty.heading'));
     }
 
     private function loadUsers(int $page, int $recordsPerPage, ?string $search): LengthAwarePaginator

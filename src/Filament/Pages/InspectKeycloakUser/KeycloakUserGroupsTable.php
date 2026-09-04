@@ -20,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakGroupsApi;
@@ -30,13 +31,13 @@ use function array_map;
 use function assert;
 use function in_array;
 use function sprintf;
-use function view;
 
 /**
  * Groups section — the realm groups the user belongs to, as a table. The per-user membership list is
  * small, so it renders whole (no pagination). An "Add to group" header action (picker of groups the
  * user is not yet in) and a per-row "Remove" mutate membership one group per call, then re-read the
- * table and broadcast the shared cross-tab signal (plan §7.2). Every failure propagates (plan §8).
+ * table and broadcast the shared cross-tab signal (plan §7.2). A failed read is not caught here: it
+ * propagates to {@see KeycloakLoadErrorRenderer}.
  */
 final class KeycloakUserGroupsTable extends Component implements HasActions, HasSchemas, HasTable
 {

@@ -26,13 +26,13 @@ use Sandstorm\KeycloakAdminApi\Features\KeycloakSessionsApi\Dto\KeycloakSession;
 use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function assert;
-use function view;
 
 /**
  * Active sessions section — the user's currently-live sessions as a table (empty once logged
  * out/expired, which is normal). A "Log out all sessions" header action force-signs-out everywhere,
  * then re-reads the table and broadcasts the cross-tab signal (a logout shows up in user events too —
- * plan §7.2). Every failure propagates (plan §8).
+ * plan §7.2). A failed read is not caught here: it propagates to {@see
+ * \Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer}.
  */
 final class KeycloakUserSessionsTable extends Component implements HasActions, HasSchemas, HasTable
 {

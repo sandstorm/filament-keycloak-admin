@@ -6,6 +6,13 @@
 #   docker compose -f tests/Integration/docker-compose.yml up -d --wait
 #   KEYCLOAK_E2E_BASE_URL=http://localhost:9911 vendor/bin/phpunit --testsuite integration
 #   docker compose -f tests/Integration/docker-compose.yml down -v
+#
+# Both imported realms set `sslRequired: none`. Without it they default to Keycloak's "external"
+# policy (HTTPS required unless the caller's address is recognised as local), and behind Docker
+# Desktop's port-forwarding the caller's address is sometimes reported in a form Keycloak does not
+# recognise as local — producing an intermittent, non-deterministic "HTTPS required" 403 on the
+# token endpoint. `none` removes the flakiness outright, which is fine for a throwaway local/CI-only
+# instance that is never reachable from outside this compose network.
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.3

@@ -9,6 +9,7 @@ use Filament\Panel;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Schema;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakAdminEventsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserCredentialsTable;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Pages\InspectKeycloakUser\KeycloakUserEventsTable;
@@ -27,8 +28,10 @@ use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
  * the reads.
  *
  * The page fetches almost nothing itself — it is a **tab orchestrator**: {@see self::detailSchema()}
- * builds Filament `Tabs`, each embedding one or more child Livewire components that own their own
- * fetch. Every failure (including 401/403) propagates to the framework error page (plan §8).
+ * builds Filament `Tabs`, each embedding one or more child Livewire components that own their own fetch.
+ * Nothing here catches a failed Keycloak read (this page's own, or a tab component's): it propagates to
+ * {@see KeycloakLoadErrorRenderer}, the one place a read
+ * failure becomes a friendly response instead of a 500.
  */
 final class InspectKeycloakUser extends Page
 {
@@ -43,8 +46,7 @@ final class InspectKeycloakUser extends Page
     protected KeycloakUsersApi $usersApi;
 
     /**
-     * The user, fetched once for the heading. `false` = not yet fetched (distinct from a real `null`
-     * field, which no heading needs since the fetch either returns a user or propagates its failure).
+     * The user, fetched once for the heading — `false` sentinel means "not fetched yet this request".
      */
     private KeycloakUser | false $resolvedUser = false;
 
@@ -77,13 +79,15 @@ final class InspectKeycloakUser extends Page
         return $this->resolveUser()->email;
     }
 
+    /**
+     * {@see self::getTitle()}, {@see self::getSubheading()} and {@see self::detailSchema()} all resolve
+     * the same user while Blade compiles — memoized here so a successful render only hits Keycloak once.
+     */
     private function resolveUser(): KeycloakUser
     {
-        if ($this->resolvedUser !== false) {
-            return $this->resolvedUser;
-        }
-
-        return $this->resolvedUser = $this->usersApi->getById(new KeycloakUserId((string) $this->userId));
+        return $this->resolvedUser !== false
+            ? $this->resolvedUser
+            : $this->resolvedUser = $this->usersApi->getById(new KeycloakUserId((string) $this->userId));
     }
 
     /**

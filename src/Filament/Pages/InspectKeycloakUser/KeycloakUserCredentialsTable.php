@@ -20,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer;
 use Sandstorm\FilamentKeycloakAdmin\Filament\Helpers\KeycloakRecord;
 use Sandstorm\FilamentKeycloakAdmin\Logging\LogsKeycloakAdminWrites;
 use Sandstorm\KeycloakAdminApi\Features\KeycloakCredentialsApi;
@@ -29,11 +30,11 @@ use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 use function assert;
 use function config;
 use function sprintf;
-use function view;
 
 /**
  * Security / 2FA section — the user's stored credentials (password + any OTP/WebAuthn factors) as a
- * table. An OTP/WebAuthn row present means 2FA is configured. Every failure propagates (plan §8).
+ * table. An OTP/WebAuthn row present means 2FA is configured. A failed read is not caught here: it
+ * propagates to {@see KeycloakLoadErrorRenderer}.
  *
  * Per-credential removal is **whitelisted**: only second-factor credentials (OTP/WebAuthn) with a real
  * id are removable — `password` is never removable here (removing it is not a 2FA reset and could lock

@@ -1,6 +1,7 @@
 {
     "realm": "test-realm",
     "enabled": true,
+    "sslRequired": "none",
     "eventsEnabled": true,
     "eventsListeners": ["jboss-logging"],
     "adminEventsEnabled": true,

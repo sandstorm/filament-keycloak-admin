@@ -29,14 +29,14 @@ use Sandstorm\KeycloakAdminApi\SharedModel\KeycloakUserId;
 
 use function array_keys;
 use function in_array;
-use function view;
 
 /**
  * Identity section of the detail page — the key/value fields (username, email, name, email-verified,
  * plus the realm's custom User-Profile attributes) and a pending-TOTP note, and the **write** surface: a
  * live enable/disable toggle (like the stock Keycloak user page) and an "Edit" action for the names,
  * email-verified flag, and every admin-editable custom attribute. Its own Livewire component so the host
- * page fetches nothing.
+ * page fetches nothing. A failed read is not caught here: it propagates to {@see
+ * \Sandstorm\FilamentKeycloakAdmin\Exceptions\KeycloakLoadErrorRenderer}.
  *
  * The custom attributes are **not** free-form key/value pairs: which attributes exist, their labels,
  * widgets, validators, required-ness, and who may view/edit them all come from Keycloak's declarative
@@ -51,8 +51,7 @@ use function view;
  * custom attribute additionally honours its schema permission (`adminCanEdit`): a view-only attribute is
  * shown read-only in the infolist and never appears as an editable field. A write can still be denied by
  * a mid-flight grant change, so every write goes through
- * {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as a friendly notice
- * (the scoped exception to plan §8; other failures still propagate).
+ * {@see InteractsWithKeycloakWrites::runKeycloakWrite()}, which surfaces a 401/403 as a friendly notice.
  */
 final class KeycloakUserIdentity extends Component implements HasActions, HasSchemas
 {
