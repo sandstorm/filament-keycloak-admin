@@ -56,7 +56,7 @@ final class KeycloakLoadErrorRenderer
             return null;
         }
 
-        KeycloakAdminLoggerFactory::resolve(app())->error(
+        KeycloakAdminLoggerFactory::resolve(app())?->error(
             'Keycloak load error',
             [
                 'admin_id' => Filament::auth()->id(),

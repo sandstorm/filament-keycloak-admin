@@ -44,7 +44,7 @@ final class SsoAuthErrorRenderer
 
         // Log warning level, as this is most likely
         // NOT a programming / configuration problem.
-        KeycloakAdminLoggerFactory::resolve(app())->warning(
+        KeycloakAdminLoggerFactory::resolve(app())?->warning(
             'Keycloak admin SSO auth error',
             [
                 'admin_id' => Filament::auth()->id(),
